@@ -137,6 +137,7 @@ def jpprogram():
     MaxEntry = max(Output_df['Entry'].values)
     NewEntry = MaxEntry + 1
 
+    # Match existing format & populate with correct data
     Updata = {'Entry': [NewEntry],
             'Db Species Name': [Species_name],
             'A': [Ao],
