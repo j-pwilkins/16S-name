@@ -3,11 +3,11 @@ import pandas as pd
 import numpy as np
 import os
 
-# Find how many times the program has to run
+## Open input file & log number of queries to be performed
 Input_df = pd.read_csv("Input10.csv")
 Runs = len(Input_df.index.tolist())   # Temp to make it easier to check
 RowList = list(range(Runs))
-fastaRowList = RowList[:]
+fastaRowList = RowList[:]   # Copies list so it can be manipulated without affecting RowList
 
 ## create running Pandas dataframe
 # Includes dummy 1st row that will be deleted later
@@ -39,13 +39,11 @@ Output_df = pd.DataFrame(data)
 Output_df.to_csv("rdf.csv", sep=',', index=False)
 
 ## convert Input sheet into fasta format for vsource
-
-# Program to convert each line into 2 line fasta format
 def querytofasta():
 
-    # def convertfasta()
+    # parse csv file to create required variables
     Input_df = pd.read_csv("Input10.csv")
-    Row = fastaRowList[0]  # Take the 1st value from a list which sets the program to take the 1st row
+    Row = fastaRowList[0]   # Take the 1st value from a list which sets the program to take the 1st row
     Query = str(Input_df['Input Index'].values[Row])
     Name = str(Input_df['DB Name'].values[Row])
     Sequence = str(Input_df['16S Sequence'].values[Row])
@@ -68,7 +66,7 @@ def querytofasta():
 for i in range(Runs):
   querytofasta()
 
-# Run vsearch using a system call
+## Run vsearch using a system call
 cmd = 'vsearch --allpairs_global Input10.fa --blast6out vsearch.csv --acceptall'
 os.system(cmd)
 
@@ -83,7 +81,7 @@ vsearch_df = pd.read_csv("vsearch.csv",
 firstorder = pd.Series(np.arange(1,46,1))
 vsearch_df.insert(0, "Vsearch Entry", firstorder, True)
 
-# Load vsearch output 2nd time with different name
+# Load vsearch output a 2nd time with a different name
 vsearch2_df = pd.read_csv("vsearch.csv",
                          usecols=[0, 1, 2],         # Only 1st 3 columns
                          sep='\t',
@@ -104,18 +102,19 @@ vsearch_df.loc[-1] = [0, 'Q1', 'Q0', 0]   # adds new row
 vsearch_df.index = vsearch_df.index + 1  # shifting index
 vsearch_df = vsearch_df.sort_index()  # sorting by index
 
-# Convert columns to allow comparisons
+# Convert Query columns to allow comparisons - e.g. change Q1 to 1
 vsearch_df ['Query Seq'] = vsearch_df ['Query Seq'].str.replace(r'\D', '')   # Strip all non-numeric values
 vsearch_df ['Target Seq'] = vsearch_df ['Target Seq'].str.replace(r'\D', '')
 vsearch_df ['Query Seq'] = vsearch_df ['Query Seq'].astype(int)   # convert strings to integers
 vsearch_df ['Target Seq'] = vsearch_df ['Target Seq'].astype(int)
 
-## Create Column to find closest LOWER sequence
+## Add Columns finding closest LOWER sequence & similarity%
 # Create some parameters for function
 vRuns = len(vsearch_df.index.tolist())   # Number of rows in input file
 vRowList = list(range(vRuns))
 simlist = [1000]   # Create dummy 1st entry in list
 seqlist = [1000]
+
 # Create function to generate list of similarities
 def func():
     vRow = vRowList[0]
@@ -135,14 +134,14 @@ for i in range(vRuns):
 simlist.pop(0)  # remove dummy 1st entry
 seqlist.pop(0)
 
-# add column fro list
+# add columns from list
 vsearch_df ['Closest Seq'] = seqlist
 vsearch_df ['Sim Close'] = simlist
 vsearch_df = vsearch_df.iloc[1:]
 
 vsearch_df.to_csv("vsearchcurated.csv", sep=',', index=False)
 
-##create function of program
+## Generate new names for each query
 def namequery():
     # Import RunningDataframe
     Output_df = pd.read_csv("rdf.csv")
@@ -156,7 +155,7 @@ def namequery():
     Date_Accessed = Input_df['Date Accessed'].values[Row]
     Sequence = Input_df['16S Sequence'].values[Row]
 
-    # Define which sequence being compared to - this is from vSource but currently being done by hand, will have to be coded in, in future
+    # Read from vsearch list to find closest sequence & its similarity
     close_df = pd.read_csv("vsearchcurated.csv")
     Query = int(Input)
     ComparisonRow_df = close_df.loc[close_df['Query Seq'] == Query]
@@ -301,19 +300,11 @@ def namequery():
     # Second, concatenate the temporary df to the df
     Output_df = pd.concat([Output_df, Temp_df], ignore_index=True, axis=0)
 
-
-    # Print output - this is old code used to check that the output was working correctly
-    #print(f"The thresholds used here are A={A}% B={B}% C={C}% D={D}% E={E}%")
-    #print(f"Your query '{Species_name}' is {similarity}% similar to 'Template' - {Ai}A {Bi}B {Ci}C {Di}D {Ei}E {Fi}F {Gi}G {Hi}H {Ii}I {Ji}J {Ki}K {Li}L {Mi}M {Ni}N {Oi}O {Pi}P {Qi}Q")
-    #print(f"{Ao}A {Bo}B {Co}C {Do}D {Eo}E {Fo}F {Go}G {Ho}H {Io}I {Jo}J {Ko}K {Lo}L {Mo}M {No}N {Oo}O {Po}P {Qo}Q is the name now assigned within the database to this query")
-
     #with pd.option_context('display.max_columns', None): print(Output_df)
     Output_df.to_csv("rdf.csv", sep=',', index=False)
 
     #delete 1st entry from RowList so the next Row can be used
     del RowList[0]
-    #del SimList[0]
-    #del VersusList[0]
 
 for i in range(Runs):       # Run the program as many times as there are rows (query inputs) in the Input csv
   namequery()
