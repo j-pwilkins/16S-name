@@ -38,7 +38,7 @@ data = {'Entry': [0],
 Output_df = pd.DataFrame(data)
 Output_df.to_csv("rdf.csv", sep=',', index=False)
 
-## convert Input sheet into fasta format for vsource
+## convert Input sheet into fasta format for vsearch
 def querytofasta():
 
     # parse csv file to create required variables
