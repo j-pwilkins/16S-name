@@ -329,8 +329,3 @@ shutil.move('vsearchcurated.csv', 'data')
 shutil.move('Input10.fa', 'data')
 shutil.move("data", Input2)
 shutil.move("Summary.csv", Input2)
-
-# Remove any unneeded files
-#os.remove('rdf.csv')
-#os.remove('vsearchcurated.csv')
-#os.remove('Input10.fa')
