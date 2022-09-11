@@ -2,9 +2,14 @@
 import pandas as pd
 import numpy as np
 import os
+import shutil
+
+Input = input("What is the name of the csv file being used to input the data?")
+File = Input + ".csv"
+Input2 = input("What would you like this query to be called?")
 
 ## Open input file & log number of queries to be performed
-Input_df = pd.read_csv("Input10.csv")
+Input_df = pd.read_csv(File)
 Runs = len(Input_df.index.tolist())   # Temp to make it easier to check
 RowList = list(range(Runs))
 fastaRowList = RowList[:]   # Copies list so it can be manipulated without affecting RowList
@@ -42,7 +47,7 @@ Output_df.to_csv("rdf.csv", sep=',', index=False)
 def querytofasta():
 
     # parse csv file to create required variables
-    Input_df = pd.read_csv("Input10.csv")
+    Input_df = pd.read_csv(File)
     Row = fastaRowList[0]   # Take the 1st value from a list which sets the program to take the 1st row
     Query = str(Input_df['Input Index'].values[Row])
     Name = str(Input_df['DB Name'].values[Row])
@@ -147,7 +152,7 @@ def namequery():
     Output_df = pd.read_csv("rdf.csv")
 
     # Open file - create variables from Row that is being used as Input
-    Input_df = pd.read_csv("Input10.csv")
+    Input_df = pd.read_csv(File)
     Row = RowList[0]   # Take the 1st value from a list which sets the program to take the 1st row
     Input = Input_df['Input Index'].values[Row]
     Species_name = Input_df['DB Name'].values[Row]
@@ -312,6 +317,20 @@ for i in range(Runs):       # Run the program as many times as there are rows (q
 # Delete the Template row
 Output_df = pd.read_csv("rdf.csv")
 Output_df = Output_df.drop(0)
+# Edit df and save to Summary csv file
 Output_df['Entry'] = 'Q' + Output_df['Entry'].astype(str)
 Output_df['Vs'] = 'Q' + Output_df['Vs'].astype(str)
 Output_df.to_csv("Summary.csv", sep=',', index=False)
+# create Output directory and move files there
+os.mkdir(Input2)
+os.mkdir('data')
+shutil.move('rdf.csv', 'data')
+shutil.move('vsearchcurated.csv', 'data')
+shutil.move('Input10.fa', 'data')
+shutil.move("data", Input2)
+shutil.move("Summary.csv", Input2)
+
+# Remove any unneeded files
+#os.remove('rdf.csv')
+#os.remove('vsearchcurated.csv')
+#os.remove('Input10.fa')
