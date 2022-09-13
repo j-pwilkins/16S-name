@@ -4,17 +4,18 @@ import numpy as np
 import os
 import shutil
 import sys
+from datetime import datetime
+
+# Grab current time before running code
+startTime = datetime.now()
 
 # Parse command line arguments
 Inputfile = sys.argv[1]
-#Inputfile = 'Input10.csv'         # temp Inputs to allow use of PyCharm
 Output_directory = sys.argv[2]
-#Output_directory = 'Sep12'
 
 # Create new working directory
 os.makedirs(Output_directory, exist_ok = True)  # Create directory
 shutil.copy(Inputfile, Output_directory)    # Move Input file to new dir
-#shutil.copy('vsearch.csv', Output_directory)        #Temp line
 os.chdir(Output_directory)  # Make new dir working dir
 
 ## Open input file & log number of queries to be performed
@@ -25,7 +26,7 @@ fastaRowList = RowList[:]   # Copies list so it can be manipulated without affec
 
 ## create running Pandas dataframe
 # Includes dummy 1st row that will be deleted later
-d1, d2, d3 = {'Entry': [0], 'Db Species Name': ['Template'], 'A': [-1]}, dict.fromkeys('BCDEFGHIJKLMNOPQ',[0]), {'Vs': [0], 'Similarity': [0], 'DB': 'Silva', 'Accession No.': [0], 'Date Accessed': [0], '16S Sequence': ['AAAAAGGGG']}
+d1, d2, d3 = {'Entry': [0], 'Db Species Name': ['Template'], 'A': [-1]}, dict.fromkeys('BCDEFGHIJKLM',[0]), {'Vs': [0], 'Similarity': [0], 'DB': 'Silva', 'Accession No.': [0], 'Date Accessed': [0], '16S Sequence': ['AAAAAGGGG']}
 Output_df = pd.DataFrame(dict(d1, **d2, **d3))
 Output_df.to_csv("rdf.csv", sep=',', index=False)
 
@@ -131,9 +132,9 @@ def namequery():
     ComparisonSequence = Output_df['Db Species Name'].values[Versus]
 
     # Assign labels for the individual values & convert to integers
-    Ai, Bi, Ci, Di, Ei, Fi, Gi, Hi, Ii, Ji, Ki, Li, Mi, Ni, Oi, Pi, Qi = int(Output_df['A'].values[Versus]), int(Output_df['B'].values[Versus]), int(Output_df['C'].values[Versus]), int(Output_df['D'].values[Versus]), int(Output_df['E'].values[Versus]), int(Output_df['F'].values[Versus]), int(Output_df['G'].values[Versus]), int(Output_df['H'].values[Versus]), int(Output_df['I'].values[Versus]), int(Output_df['J'].values[Versus]), int(Output_df['K'].values[Versus]), int(Output_df['L'].values[Versus]), int(Output_df['M'].values[Versus]), int(Output_df['N'].values[Versus]), int(Output_df['O'].values[Versus]), int(Output_df['P'].values[Versus]), int(Output_df['Q'].values[Versus])
+    Ai, Bi, Ci, Di, Ei, Fi, Gi, Hi, Ii, Ji, Ki, Li, Mi = int(Output_df['A'].values[Versus]), int(Output_df['B'].values[Versus]), int(Output_df['C'].values[Versus]), int(Output_df['D'].values[Versus]), int(Output_df['E'].values[Versus]), int(Output_df['F'].values[Versus]), int(Output_df['G'].values[Versus]), int(Output_df['H'].values[Versus]), int(Output_df['I'].values[Versus]), int(Output_df['J'].values[Versus]), int(Output_df['K'].values[Versus]), int(Output_df['L'].values[Versus]), int(Output_df['M'].values[Versus])
     # Set the thresholds - 99.94% is the highest threshold required for a single nt difference across a full 16S sequence
-    A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q = 60, 70, 80, 85, 90, 95, 98, 99, 99.5, 99.6, 99.7, 99.8, 99.9, 99.91, 99.92, 99.93, 99.94
+    A, B, C, D, E, F, G, H, I, J, K, L, M = 60, 70, 80, 85, 90, 95, 98, 99, 99.5, 99.6, 99.7, 99.8, 99.9
 
     # Algorithm to create new name
     if similarity < A:  # if the query fails to meet the threshold then
@@ -213,30 +214,12 @@ def namequery():
                                                         No = Oo = Po = Qo = 0
                                                     else:
                                                         Mo = Mi
-                                                        if similarity < N:
-                                                            No = Nm + 1
-                                                            Oo = Po = Qo = 0
-                                                        else:
-                                                            No = Ni
-                                                            if similarity < O:
-                                                                Oo = Om + 1
-                                                                Po = Qo = 0
-                                                            else:
-                                                                Oo = Oi
-                                                                if similarity < P:
-                                                                    Po = Pm + 1
-                                                                    Qo = 0
-                                                                else:
-                                                                    Po = Pi
-                                                                    if similarity < Q:
-                                                                        Qo = Qm + 1
-                                                                    else:
-                                                                        Qo = Qi
+
     # Append new line to pandas Output_df
     # First create a temporary df for the new line
     MaxEntry = max(Output_df['Entry'].values)   # Find the highest entry in the df
     NewEntry = MaxEntry + 1
-    Updata = {'Entry': [NewEntry], 'Db Species Name': [Species_name], 'A': [Ao], 'B': [Bo], 'C': [Co], 'D': [Do], 'E': [Eo], 'F': [Fo], 'G': [Go], 'H': [Ho], 'I': [Io], 'J': [Jo], 'K': [Ko], 'L': [Lo], 'M': [Mo], 'N': [No], 'O': [Oo], 'P': [Po], 'Q': [Qo], 'Vs': [Versus], 'Similarity': [similarity], 'DB': [Db_Found], 'Accession No.': [Accession], 'Date Accessed': [Date_Accessed], '16S Sequence': [Sequence]}
+    Updata = {'Entry': [NewEntry], 'Db Species Name': [Species_name], 'A': [Ao], 'B': [Bo], 'C': [Co], 'D': [Do], 'E': [Eo], 'F': [Fo], 'G': [Go], 'H': [Ho], 'I': [Io], 'J': [Jo], 'K': [Ko], 'L': [Lo], 'M': [Mo], 'Vs': [Versus], 'Similarity': [similarity], 'DB': [Db_Found], 'Accession No.': [Accession], 'Date Accessed': [Date_Accessed], '16S Sequence': [Sequence]}
     Temp_df = pd.DataFrame(Updata)  # create temporary df
     # Second, concatenate the temporary df to the df
     Output_df = pd.concat([Output_df, Temp_df], ignore_index=True, axis=0)
@@ -256,4 +239,10 @@ Output_df.to_csv("Summary.csv", sep=',', index=False)
 # create Output directory and move files there
 os.mkdir('data')
 shutil.move('rdf.csv', 'data')
-shutil.move('Input10.fa', 'data')
+shutil.move(Fastaname, 'data')
+
+# Grab time and print runtime of program
+programlength = datetime.now() - startTime
+
+# Summary report for Bash
+print(f'{sys.argv[0]} has completed in {programlength}. {sys.argv[1]} was processed and the Summary.csv file can be found in the new {sys.argv[2]} directory.')
