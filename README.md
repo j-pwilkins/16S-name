@@ -1,5 +1,5 @@
 # 16S-name
-7 Dec 2022
+**7 Dec 2022**
 I have added two programs today as an idea of where my code is at.
 
 create_db.py is the program to take the Hungate 1000 sequences (or anything else) and create a database.
@@ -10,7 +10,7 @@ map_variable_regions.py is the program that takes a sheet of sequences from a va
 CuratedHungate1000.csv is the file that would go into create_db.py, and db_497.csv is the file that would come out. CuratedHungate1000.csv would also be used for map_variable_regions.py (with different sequences). 
 
 
-Old
+**Old**
 Code for naming system for rumen 16S samples
 
 To run this program Python 3 and vsearch need to be installed
