@@ -56,12 +56,14 @@ def add_majority_column_a(df, columns):
                 write_csv(df, group_name_2_csv)
                 df = df[df[column + '_a'] != 'x']
                 write_csv(df, group_name_3_csv)
-                print(f"{group_name} has {group_size} rows. It {test_result}. Mode is {modal_value}.")
+                print(f"{group_name} - {test_result} . {group_size} rows. Frequency - {frequency_of_modal_value}. Threshold - {threshold}. Mode - {modal_value}.")
+                df_filtered = df[df[column + '_a'] != 'x']
+                grouped = df_filtered.groupby('Query#')  # this line re-group the dataset for the next column iteration
             if not test_result:
                 first_row = group.head(1).copy()
-                first_row.loc[:, column] = '-'
+                first_row.loc[:, column+'_a'] = '-'
                 rejected_df = pd.concat([rejected_df, first_row])
-
+                print(f"{group_name} - {test_result}. {group_size} rows. Frequency - {frequency_of_modal_value}. Threshold - {threshold}. Mode - {modal_value}.")
         grouped = df_filtered.groupby('Query#')
 
     return df, rejected_df
