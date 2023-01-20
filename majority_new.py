@@ -6,8 +6,17 @@ import sys
 from datetime import datetime
 
 def main():
+    # Create new 'data' folder to house test files
+    if os.path.exists("data"):
+        shutil.rmtree("data")
+    os.mkdir("data")
     shared_matches_df = read_csv('test_5.csv')
     add_consensus_sequences(shared_matches_df)
+    # Move .csv files that match the specified format to the "data" folder
+    for file in os.listdir():
+        if file.endswith(".csv") and file[0].isupper() and file[1].isdigit():
+            shutil.move(file, "data")
+
 
 def add_consensus_sequences(shared_matches_df):
     majority_df = add_majority_consensus_sequences(shared_matches_df)
@@ -33,8 +42,9 @@ def add_majority_column_a(df, columns):
     df_filtered = df.copy()
     # iterate over each column
     for column in columns:
-        # create a new column 'a' with default value '-'
-        df[column + '_a'] = '_'
+        # create a new column 'a' with default value '_'
+        new_column = column.lower()
+        df[new_column] = '_'
         # iterate over each group
         for name, group in grouped:
             # calculate modal_value, frequency_of_modal_value and group_size
@@ -51,17 +61,17 @@ def add_majority_column_a(df, columns):
             write_csv(df, group_name_csv)
             if test_result:
                 # df = df.copy()
-                df.loc[(df['Query#'] == name) & (df[column] == modal_value), column+'_a'] = modal_value
-                df.loc[(df['Query#'] == name) & (df[column] != modal_value), column + '_a'] = 'x'
+                df.loc[(df['Query#'] == name) & (df[column] == modal_value), new_column] = modal_value
+                df.loc[(df['Query#'] == name) & (df[column] != modal_value), new_column] = 'x'
                 write_csv(df, group_name_2_csv)
-                df = df[df[column + '_a'] != 'x']
+                df = df[df[new_column] != 'x']
                 write_csv(df, group_name_3_csv)
                 print(f"{group_name} - {test_result} . {group_size} rows. Frequency - {frequency_of_modal_value}. Threshold - {threshold}. Mode - {modal_value}.")
-                df_filtered = df[df[column + '_a'] != 'x']
+                df_filtered = df[df[new_column] != 'x']
                 grouped = df_filtered.groupby('Query#')  # this line re-group the dataset for the next column iteration
             if not test_result:
                 first_row = group.head(1).copy()
-                first_row.loc[:, column+'_a'] = '-'
+                first_row.loc[:, new_column] = '-'
                 rejected_df = pd.concat([rejected_df, first_row])
                 print(f"{group_name} - {test_result}. {group_size} rows. Frequency - {frequency_of_modal_value}. Threshold - {threshold}. Mode - {modal_value}.")
         grouped = df_filtered.groupby('Query#')
