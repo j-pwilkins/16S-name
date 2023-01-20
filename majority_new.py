@@ -6,28 +6,21 @@ import sys
 from datetime import datetime
 
 def main():
-    # Create new 'data' folder to house test files
-    if os.path.exists("data"):
-        shutil.rmtree("data")
-    os.mkdir("data")
     shared_matches_df = read_csv('test.csv')
     add_consensus_sequences(shared_matches_df)
-    # Move .csv files that match the specified format to the "data" folder
-    for file in os.listdir():
-        if file.endswith(".csv") and file[0].isupper() and file[1].isdigit():
-            shutil.move(file, "data")
 
 
 def add_consensus_sequences(shared_matches_df):
-    majority_df = add_majority_consensus_sequences(shared_matches_df)
+    pre_consensus_df = add_majority_consensus_sequences(shared_matches_df)
 
 def add_majority_consensus_sequences(shared_matches_df):
-    majority_df = shared_matches_df.copy()
+    pre_consensus_df = shared_matches_df.copy()
     columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
-    majority_df, rejected_df = add_majority_column_a(shared_matches_df, columns)
-    write_csv(majority_df, 'majority.csv')
-    write_csv(rejected_df, 'rejected.csv')
-    return majority_df
+    pre_consensus_df, consensus_df = add_majority_column_a(shared_matches_df, columns)
+    write_csv(pre_consensus_df, 'majority.csv')
+    write_csv(consensus_df, 'rejected.csv')
+    # pre_consensus_df = rejoin_majority_and_rejected(pre_consensus_df, consensus_df, shared_matches_df, columns)
+    return pre_consensus_df
 
 def calculate_threshold(group_size, frequency_of_modal_value, minimum_threshold=0.5):
     threshold = group_size * minimum_threshold
@@ -36,7 +29,7 @@ def calculate_threshold(group_size, frequency_of_modal_value, minimum_threshold=
 
 def add_majority_column_a(df, columns):
     # initialize an empty dataframe to store rejected rows
-    rejected_df = pd.DataFrame(columns=df.columns)
+    consensus_df = pd.DataFrame(columns=df.columns)
     # group by 'Query#'
     grouped = df.groupby('Query#')
     df_filtered = df.copy()
@@ -55,39 +48,24 @@ def add_majority_column_a(df, columns):
             # calculate threshold
             threshold, test_result = calculate_threshold(group_size, frequency_of_modal_value)
             group_name = column + str(name)
-            # print(group_name)
-            # if group_name == 'B4':
-            #     print(group)
-            #     print(df)
-            group_name_csv = group_name + '.csv'
-            group_name_2_csv = group_name + '_2.csv'
-            group_name_3_csv = group_name + '_3.csv'
-            write_csv(df, group_name_csv)
             if test_result:
-                # df = df.copy()
                 df.loc[(df['Query#'] == name) & (df[column] == modal_value), new_column] = modal_value
                 df.loc[(df['Query#'] == name) & (df[column] != modal_value), new_column] = 'x'
-                write_csv(df, group_name_2_csv)
                 df = df[df[new_column] != 'x']
-                write_csv(df, group_name_3_csv)
-                print(f"{group_name} - {test_result} . {group_size} rows. Frequency - {frequency_of_modal_value}. Threshold - {threshold}. Mode - {modal_value}.")
+                # print(f"{group_name} - {test_result} . {group_size} rows. Frequency - {frequency_of_modal_value}. Threshold - {threshold}. Mode - {modal_value}.")
                 df_filtered = df[df[new_column] != 'x']
                 grouped = df_filtered.groupby('Query#')  # this line re-group the dataset for the next column iteration
             if not test_result:
                 first_row = group.head(1).copy()
-                # print(type(first_row))
                 first_row.loc[:, new_column] = '-'
-                rejected_df = pd.concat([rejected_df, first_row])
-                # print(f"group name is {name}")
+                consensus_df = pd.concat([consensus_df, first_row])
                 df = df[df['Query#'] != name]
-                # print(group)
-                # print(df)
                 print(f"{group_name} - {test_result}. {group_size} rows. Frequency - {frequency_of_modal_value}. Threshold - {threshold}. Mode - {modal_value}.")
         grouped = df_filtered.groupby('Query#')
 
-    return df, rejected_df
+    return df, consensus_df
 
-
+# def rejoin_majority_and_rejected(pre_consensus_df, consensus_df, shared_matches_df, columns):
 
 
 def read_csv(filename):
