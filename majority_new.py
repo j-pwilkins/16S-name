@@ -10,7 +10,7 @@ def main():
     if os.path.exists("data"):
         shutil.rmtree("data")
     os.mkdir("data")
-    shared_matches_df = read_csv('test_5.csv')
+    shared_matches_df = read_csv('test.csv')
     add_consensus_sequences(shared_matches_df)
     # Move .csv files that match the specified format to the "data" folder
     for file in os.listdir():
@@ -71,8 +71,12 @@ def add_majority_column_a(df, columns):
                 grouped = df_filtered.groupby('Query#')  # this line re-group the dataset for the next column iteration
             if not test_result:
                 first_row = group.head(1).copy()
+                print(type(first_row))
                 first_row.loc[:, new_column] = '-'
                 rejected_df = pd.concat([rejected_df, first_row])
+                df = df.drop(group.index)  # new line to drop the first row from the main df
+                print(group)
+                print(df)
                 print(f"{group_name} - {test_result}. {group_size} rows. Frequency - {frequency_of_modal_value}. Threshold - {threshold}. Mode - {modal_value}.")
         grouped = df_filtered.groupby('Query#')
 
