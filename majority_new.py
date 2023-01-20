@@ -19,7 +19,7 @@ def add_majority_consensus_sequences(shared_matches_df):
     pre_consensus_df, consensus_df = add_majority_column_a(shared_matches_df, columns)
     write_csv(pre_consensus_df, 'majority.csv')
     write_csv(consensus_df, 'rejected.csv')
-    # pre_consensus_df = rejoin_majority_and_rejected(pre_consensus_df, consensus_df, shared_matches_df, columns)
+    consensus_df = process_consensus_df(pre_consensus_df, consensus_df, shared_matches_df, columns)
     return pre_consensus_df
 
 def calculate_threshold(group_size, frequency_of_modal_value, minimum_threshold=0.5):
@@ -65,8 +65,37 @@ def add_majority_column_a(df, columns):
 
     return df, consensus_df
 
-# def rejoin_majority_and_rejected(pre_consensus_df, consensus_df, shared_matches_df, columns):
+def process_consensus_df(pre_consensus_df, consensus_df, shared_matches_df, columns):
+    if check_queries_complete_one(pre_consensus_df):
+        check_queries_complete_two(consensus_df, shared_matches_df)
+        remove_duplicated_processed_queries(consensus_df)
+        # continue processing
+    else:
+        print('stopping at process_consensus_df')
+        # stop program
 
+def check_queries_complete_one(pre_consensus_df):
+    if pre_consensus_df.empty:
+        return True
+    else:
+        unprocessed_groups = pre_consensus_df['Query#'].nunique()
+        print(f'There are {unprocessed_groups} unprocessed groups still to be processed')
+        return False
+
+def check_queries_complete_two(consensus_df, shared_matches_df):
+    consensus_queries = consensus_df['Query#'].unique()
+    shared_queries = shared_matches_df['Query#'].unique()
+
+    missing_queries_list = list(set(shared_queries) - set(consensus_queries))
+    if missing_queries_list:
+        print(f"Some queries have not been processed, they are {missing_queries_list}")
+
+    bogus_queries_list = list(set(consensus_queries) - set(shared_queries))
+    if bogus_queries_list:
+        print(
+            f"There are queries that have been processed that weren't in the shared_matches_df, they are {bogus_queries_list}")
+
+def remove_duplicated_processed_queries(consensus_df):
 
 def read_csv(filename):
     try:
