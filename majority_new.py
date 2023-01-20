@@ -16,7 +16,7 @@ def add_consensus_sequences(shared_matches_df):
 def add_majority_consensus_sequences(shared_matches_df):
     pre_consensus_df = shared_matches_df.copy()
     columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
-    pre_consensus_df, consensus_df = add_majority_column_a(shared_matches_df, columns)
+    pre_consensus_df, consensus_df = add_majority_columns(shared_matches_df, columns)
     write_csv(pre_consensus_df, 'majority.csv')
     write_csv(consensus_df, 'rejected.csv')
     consensus_df = process_consensus_df(pre_consensus_df, consensus_df, shared_matches_df, columns)
@@ -29,7 +29,7 @@ def calculate_threshold(group_size, frequency_of_modal_value, minimum_threshold=
     test_result = frequency_of_modal_value / group_size > minimum_threshold
     return threshold, test_result
 
-def add_majority_column_a(df, columns):
+def add_majority_columns(df, columns):
     # initialize an empty dataframe to store rejected rows
     consensus_df = pd.DataFrame(columns=df.columns)
     # group by 'Query#'
@@ -71,6 +71,7 @@ def process_consensus_df(pre_consensus_df, consensus_df, shared_matches_df, colu
     if check_queries_complete_one(pre_consensus_df):
         check_queries_complete_two(consensus_df, shared_matches_df)
         consensus_df = remove_duplicated_processed_queries(consensus_df)
+        consensus_df = add_missing_columns(consensus_df, columns)
         # continue processing
         return consensus_df
     else:
@@ -109,6 +110,15 @@ def remove_duplicated_processed_queries(consensus_df):
     if check_unique_df:
         return unique_df
 
+def add_missing_columns(consensus_df, columns):
+    new_columns = [x.lower() for x in columns]
+    consensus_columns = list(consensus_df.columns.values)
+    if consensus_columns != new_columns:
+        missing_columns = (set(new_columns).difference(consensus_columns))
+        for str in missing_columns:
+            consensus_df = consensus_df.assign(**{str: '-'})
+
+    return consensus_df
 
 
 def read_csv(filename):
