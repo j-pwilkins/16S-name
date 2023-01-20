@@ -20,6 +20,8 @@ def add_majority_consensus_sequences(shared_matches_df):
     write_csv(pre_consensus_df, 'majority.csv')
     write_csv(consensus_df, 'rejected.csv')
     consensus_df = process_consensus_df(pre_consensus_df, consensus_df, shared_matches_df, columns)
+    write_csv(consensus_df, 'consensus.csv')
+
     return pre_consensus_df
 
 def calculate_threshold(group_size, frequency_of_modal_value, minimum_threshold=0.5):
@@ -68,8 +70,9 @@ def add_majority_column_a(df, columns):
 def process_consensus_df(pre_consensus_df, consensus_df, shared_matches_df, columns):
     if check_queries_complete_one(pre_consensus_df):
         check_queries_complete_two(consensus_df, shared_matches_df)
-        remove_duplicated_processed_queries(consensus_df)
+        consensus_df = remove_duplicated_processed_queries(consensus_df)
         # continue processing
+        return consensus_df
     else:
         print('stopping at process_consensus_df')
         # stop program
@@ -96,6 +99,17 @@ def check_queries_complete_two(consensus_df, shared_matches_df):
             f"There are queries that have been processed that weren't in the shared_matches_df, they are {bogus_queries_list}")
 
 def remove_duplicated_processed_queries(consensus_df):
+    unique_df = consensus_df.drop_duplicates(subset='Query#')
+    duplicated_df = consensus_df[~consensus_df.index.isin(unique_df.index)]
+    if duplicated_df.empty == False:
+        rows_deleted = len(duplicated_df)
+        duplicated_queries = list(set(duplicated_df['Query#']))
+        print(f"{rows_deleted} rows have been deleted from the consensus_df. The following queries were duplicated: {duplicated_queries}.")
+    check_unique_df = list(set(consensus_df['Query#'])) == list(set(unique_df['Query#']))
+    if check_unique_df:
+        return unique_df
+
+
 
 def read_csv(filename):
     try:
