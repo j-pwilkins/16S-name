@@ -23,7 +23,7 @@ def add_consensus_sequences(shared_matches_df):
 
 def add_majority_consensus_sequences(shared_matches_df):
     majority_df = shared_matches_df.copy()
-    columns = ['A', 'B']
+    columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
     majority_df, rejected_df = add_majority_column_a(shared_matches_df, columns)
     write_csv(majority_df, 'majority.csv')
     write_csv(rejected_df, 'rejected.csv')
@@ -55,6 +55,10 @@ def add_majority_column_a(df, columns):
             # calculate threshold
             threshold, test_result = calculate_threshold(group_size, frequency_of_modal_value)
             group_name = column + str(name)
+            # print(group_name)
+            # if group_name == 'B4':
+            #     print(group)
+            #     print(df)
             group_name_csv = group_name + '.csv'
             group_name_2_csv = group_name + '_2.csv'
             group_name_3_csv = group_name + '_3.csv'
@@ -71,12 +75,13 @@ def add_majority_column_a(df, columns):
                 grouped = df_filtered.groupby('Query#')  # this line re-group the dataset for the next column iteration
             if not test_result:
                 first_row = group.head(1).copy()
-                print(type(first_row))
+                # print(type(first_row))
                 first_row.loc[:, new_column] = '-'
                 rejected_df = pd.concat([rejected_df, first_row])
-                df = df.drop(group.index)  # new line to drop the first row from the main df
-                print(group)
-                print(df)
+                # print(f"group name is {name}")
+                df = df[df['Query#'] != name]
+                # print(group)
+                # print(df)
                 print(f"{group_name} - {test_result}. {group_size} rows. Frequency - {frequency_of_modal_value}. Threshold - {threshold}. Mode - {modal_value}.")
         grouped = df_filtered.groupby('Query#')
 
