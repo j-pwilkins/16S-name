@@ -6,12 +6,12 @@ import sys
 from datetime import datetime
 
 def main():
-    shared_matches_df = read_csv('test.csv')
+    shared_matches_df = read_csv('shared_matches.csv')
     add_consensus_sequences(shared_matches_df)
 
-
 def add_consensus_sequences(shared_matches_df):
-    pre_consensus_df = add_majority_consensus_sequences(shared_matches_df)
+    consensus_df = add_majority_consensus_sequences(shared_matches_df)
+    write_csv(consensus_df, 'consensus.csv')
 
 def add_majority_consensus_sequences(shared_matches_df):
     pre_consensus_df = shared_matches_df.copy()
@@ -20,9 +20,7 @@ def add_majority_consensus_sequences(shared_matches_df):
     write_csv(pre_consensus_df, 'majority.csv')
     write_csv(consensus_df, 'rejected.csv')
     consensus_df = process_consensus_df(pre_consensus_df, consensus_df, shared_matches_df, columns)
-    write_csv(consensus_df, 'consensus.csv')
-
-    return pre_consensus_df
+    return consensus_df
 
 def calculate_threshold(group_size, frequency_of_modal_value, minimum_threshold=0.5):
     threshold = group_size * minimum_threshold
@@ -62,21 +60,38 @@ def add_majority_columns(df, columns):
                 first_row.loc[:, new_column] = '-'
                 consensus_df = pd.concat([consensus_df, first_row])
                 df = df[df['Query#'] != name]
-                print(f"{group_name} - {test_result}. {group_size} rows. Frequency - {frequency_of_modal_value}. Threshold - {threshold}. Mode - {modal_value}.")
+                # print(f"{group_name} - {test_result}. {group_size} rows. Frequency - {frequency_of_modal_value}. Threshold - {threshold}. Mode - {modal_value}.")
         grouped = df_filtered.groupby('Query#')
 
     return df, consensus_df
 
 def process_consensus_df(pre_consensus_df, consensus_df, shared_matches_df, columns):
+    pre_consensus_df, matching_df = combine_duplicates(pre_consensus_df, columns)
+    consensus_df = concatenate_dfs(consensus_df, matching_df)
     if check_queries_complete_one(pre_consensus_df):
         check_queries_complete_two(consensus_df, shared_matches_df)
         consensus_df = remove_duplicated_processed_queries(consensus_df)
-        consensus_df = add_missing_columns(consensus_df, columns)
+        consensus_df, new_columns = add_missing_columns(consensus_df, columns)
+        consensus_df = replace_nans(consensus_df, new_columns)
         # continue processing
         return consensus_df
     else:
         print('stopping at process_consensus_df')
         # stop program
+
+def combine_duplicates(pre_consensus_df, columns):
+    new_columns = [x.lower() for x in columns]
+    matching_df = pd.DataFrame(columns=pre_consensus_df.columns)
+    groups = pre_consensus_df.groupby('Query#')
+    match_counter = 0
+    for group_name, group_df in groups:
+        first_row = group_df.iloc[0]
+        match = group_df[new_columns] == first_row[new_columns].values
+        if match.all().all():
+            matching_df.loc[match_counter] = first_row
+            match_counter += 1
+            pre_consensus_df = pre_consensus_df[pre_consensus_df['Query#'] != group_name]
+    return pre_consensus_df, matching_df
 
 def check_queries_complete_one(pre_consensus_df):
     if pre_consensus_df.empty:
@@ -117,9 +132,11 @@ def add_missing_columns(consensus_df, columns):
         missing_columns = (set(new_columns).difference(consensus_columns))
         for str in missing_columns:
             consensus_df = consensus_df.assign(**{str: '-'})
+    return consensus_df, new_columns
 
+def replace_nans(consensus_df, new_columns):
+    consensus_df[new_columns] = consensus_df[new_columns].fillna('-')
     return consensus_df
-
 
 def read_csv(filename):
     try:
@@ -137,5 +154,14 @@ def read_csv(filename):
 
 def write_csv(df, filename):
     df.to_csv(filename, sep=',', index=False)
+
+def concatenate_dfs(*dfs):
+    column_headers = [list(df.columns) for df in dfs]
+    if all(headers == column_headers[0] for headers in column_headers):
+        concatenated_df = pd.concat(dfs)
+        return concatenated_df
+    else:
+        df_names = ', '.join([str(df) for df in dfs])
+        print(f"{df_names} could not be concatenated as the column headers do not match. Please rectify")
 
 main()
