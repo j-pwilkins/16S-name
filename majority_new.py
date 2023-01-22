@@ -20,6 +20,7 @@ def add_majority_consensus_sequences(shared_matches_df):
     write_csv(pre_consensus_df, 'majority.csv')
     write_csv(consensus_df, 'rejected.csv')
     consensus_df = process_consensus_df(pre_consensus_df, consensus_df, shared_matches_df, columns)
+    check_unique_values(consensus_df, shared_matches_df, 'Query#')
     return consensus_df
 
 def calculate_threshold(group_size, frequency_of_modal_value, minimum_threshold=0.5):
@@ -137,6 +138,24 @@ def add_missing_columns(consensus_df, columns):
 def replace_nans(consensus_df, new_columns):
     consensus_df[new_columns] = consensus_df[new_columns].fillna('-')
     return consensus_df
+
+def check_unique_values(df1, df2, column_header):
+    unique_values_df1 = df1[column_header].unique().tolist()
+    unique_values_df1.sort()
+    unique_values_df2 = df2[column_header].unique().tolist()
+    unique_values_df2.sort()
+    extra_unique_values_df1 = list(set(unique_values_df1) - set(unique_values_df2))
+    extra_unique_values_df2 = list(set(unique_values_df2) - set(unique_values_df1))
+    unique_values_in_both_lists = list(set(unique_values_df1).intersection(unique_values_df2))
+    number_of_shared_unique_values = len(unique_values_in_both_lists)
+    if unique_values_df1 == unique_values_df2:
+        print(f"df1 and df2 are compatible. They contain {number_of_shared_unique_values} unique values in the {column_header} column.")
+    elif len(extra_unique_values_df1) > 0 and len(extra_unique_values_df2) > 0:
+        print(f"df1 and df2 both contain extra unique values in the {column_header} column. They share {number_of_shared_unique_values} unique values. df1 has {len(extra_unique_values_df1)} extra unique values. df2 has {len(extra_unique_values_df2)} extra unique values.")
+    elif len(extra_unique_values_df1) > 0 and len(extra_unique_values_df2) == 0:
+        print(f"df1 contains extra unique values in the {column_header} column. They share {number_of_shared_unique_values} unique values. df1 has {len(extra_unique_values_df1)} extra unique values.")
+    elif len(extra_unique_values_df1) == 0 and len(extra_unique_values_df2) > 0:
+        print(f"df2 contains extra unique values in the {column_header} column. They share {number_of_shared_unique_values} unique values. df2 has {len(extra_unique_values_df2)} extra unique values.")
 
 def read_csv(filename):
     try:
