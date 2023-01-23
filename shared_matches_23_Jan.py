@@ -24,17 +24,19 @@ def produce_shared_matches_df():
 def add_consensus_sequences(shared_matches_df):
     pre_consensus_df = shared_matches_df.copy()
     barcode_columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
-    majority_consensus_df = create_majority_consensus_df(pre_consensus_df, barcode_columns, shared_matches_df, minimum_threshold = 0.5)
+    majority_consensus_df = create_majority_consensus_df(pre_consensus_df, shared_matches_df, barcode_columns, minimum_threshold=0.5, selected_filter='Cm')
+    shared_matches_with_consensus_df = concatenate_dfs(shared_matches_df, majority_consensus_df)
+    shared_matches_with_consensus_df = shared_matches_with_consensus_df.sort_values(by='Query#')
+    write_csv(shared_matches_with_consensus_df, 'smwc.csv')
 
 # Level 2 # create majority consensus df
-def create_majority_consensus_df(pre_consensus_df, barcode_columns, shared_matches_df, minimum_threshold):
+def create_majority_consensus_df(pre_consensus_df, shared_matches_df, barcode_columns, minimum_threshold, selected_filter):
     pre_consensus_df, consensus_df = add_majority_barcodes(pre_consensus_df, barcode_columns, minimum_threshold)
     pre_consensus_df, matching_df = additional_consensus_barcode_filtering(pre_consensus_df, barcode_columns)
     consensus_df = concatenate_dfs(consensus_df, matching_df)
     consensus_df = fill_consensus_df_missing_values(pre_consensus_df, consensus_df, shared_matches_df, barcode_columns)
     check_consensus_df_correct (consensus_df, shared_matches_df)
-    write_csv(consensus_df, 'premerge.csv')
-    # consensus_df = prepare_consensus_df_for_merge_with_shared_matches_df(consensus_df, barcode_columns)
+    consensus_df = prepare_consensus_df_for_merge_with_shared_matches_df(consensus_df, barcode_columns, selected_filter)
     return consensus_df
 
 # Level 3 # filters shared matches and adds majority consensus barcodes. Returns processed queries in consensus_df, and unprocessed queries in pre_consensus_df
@@ -160,9 +162,24 @@ def check_consensus_df_correct (consensus_df, shared_matches_df):
     check_unique_values(consensus_df, shared_matches_df, 'Query#')
     check_df_column_unique_entries_only(consensus_df, 'Query#')
 
-#L3 #
-# def prepare_consensus_df_for_merge_with_shared_matches_df(consensus_df, barcode_columns):
-
+#L3 # prepares consensus_df for merging with shared_matches_df
+def prepare_consensus_df_for_merge_with_shared_matches_df(consensus_df, barcode_columns, selected_filter):
+    consensus_df = consensus_df.drop(columns=barcode_columns)       # drops old barcode columns
+    consensus_df = consensus_df.rename(
+        columns={'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D', 'e': 'E', 'f': 'F', 'g': 'G', 'h': 'H', 'i': 'I', 'j': 'J',
+                 'k': 'K', 'l': 'L', 'm': 'M', 'n': 'N'})   # changes new barcode columns names to old
+    consensus_df = consensus_df.sort_values(by='Query#')
+    consensus_df['Selected'] = selected_filter
+    consensus_df['Similarity(%)'] = 'N/A'
+    consensus_df['Vs DB#'] = 'N/A'
+    consensus_df['DB Name'] = 'N/A'
+    consensus_df['DB Accession Number'] = 'N/A'
+    curated_vsearch_output, database_df, query_df, summary_df, output_columns = read_inputs()
+    if set(output_columns).issubset(set(consensus_df.columns)):
+        consensus_df = consensus_df.reindex(output_columns, axis=1)
+    else:
+        print("Error: Not all columns in 'output_columns' list are present in 'consensus_df' DataFrame.")
+    return consensus_df
 
 ## functions for produce_shared_matches_df
 # read the inputs produced from mapping - these will be passed to the function when integrating into the the new mapping.py
