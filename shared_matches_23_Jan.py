@@ -25,12 +25,15 @@ def add_consensus_sequences(shared_matches_df):
     pre_consensus_df = shared_matches_df.copy()
     barcode_columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
     majority_consensus_df = create_majority_consensus_df(pre_consensus_df, shared_matches_df, barcode_columns, minimum_threshold=0.5, selected_filter='Cm')
-    shared_matches_with_consensus_df = concatenate_dfs(shared_matches_df, majority_consensus_df)
+    strict_consensus_df = create_majority_consensus_df(pre_consensus_df, shared_matches_df, barcode_columns,
+                                                         minimum_threshold=0.99, selected_filter='Cs')
+    shared_matches_with_consensus_df = concatenate_dfs(shared_matches_df, majority_consensus_df, strict_consensus_df)
     shared_matches_with_consensus_df = shared_matches_with_consensus_df.sort_values(by='Query#')
     write_csv(shared_matches_with_consensus_df, 'smwc.csv')
 
 # Level 2 # create majority consensus df
 def create_majority_consensus_df(pre_consensus_df, shared_matches_df, barcode_columns, minimum_threshold, selected_filter):
+    # pre_consensus_df = pre_consensus_df.copy()
     pre_consensus_df, consensus_df = add_majority_barcodes(pre_consensus_df, barcode_columns, minimum_threshold)
     pre_consensus_df, matching_df = additional_consensus_barcode_filtering(pre_consensus_df, barcode_columns)
     consensus_df = concatenate_dfs(consensus_df, matching_df)
@@ -99,6 +102,7 @@ def fill_consensus_df_missing_values(pre_consensus_df, consensus_df, shared_matc
         check_queries_complete_two(consensus_df, shared_matches_df)
         consensus_df = remove_duplicated_processed_queries(consensus_df)
         consensus_df, new_barcode_columns = add_missing_columns(consensus_df, barcode_columns)
+        consensus_df = consensus_df.copy()
         consensus_df = replace_nans(consensus_df, new_barcode_columns)
         return consensus_df
     else:
@@ -152,7 +156,7 @@ def add_missing_columns(consensus_df, barcode_columns):
 
 #L4 # When consensus barcode is added it stops when threshold failed. This function extends barcode ('-' values) to n column
 def replace_nans(consensus_df, new_barcode_columns):
-    consensus_df[new_barcode_columns] = consensus_df[new_barcode_columns].fillna('-')
+    consensus_df.loc[:, new_barcode_columns] = consensus_df[new_barcode_columns].fillna('-')
     return consensus_df
 
 #L3 # Checks consensus df to make sure that queries from input and output dfs match, and that output queries are not duplicated
