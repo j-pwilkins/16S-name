@@ -4,14 +4,16 @@ from datetime import datetime
 
 def main():
     start_time = datetime.now()
-    shared_matches_df = produce_shared_matches_df()
-    add_consensus_sequences(shared_matches_df)
+    curated_vsearch_output, database_df, query_df, summary_df, output_columns, region = read_inputs()
+    shared_matches_df = produce_shared_matches_df(curated_vsearch_output, query_df, summary_df, database_df, output_columns)
+    shared_matches_with_consensus_df = add_consensus_sequences(shared_matches_df, output_columns)
+    full_df = combine_shared_matches_and_summary(database_df, summary_df, shared_matches_with_consensus_df, output_columns, region)
+    write_csv(full_df,'full.csv')
     summary_statement(start_time)
 
-# Level 1 # first shared_matches sub-program
+#L1 # first shared_matches sub-program
 # produce a df containing all the possible alternative mapping options for each query
-def produce_shared_matches_df():
-    curated_vsearch_output, database_df, query_df, summary_df, output_columns = read_inputs()
+def produce_shared_matches_df(curated_vsearch_output, query_df, summary_df, database_df, output_columns):
     query_plus_vsearch_output_df = merge_query_with_vsearch_output(curated_vsearch_output, query_df)
     shared_matches_df = select_only_shared_matches(query_plus_vsearch_output_df)
     shared_matches_df = create_selected_column(shared_matches_df, summary_df)
@@ -19,27 +21,163 @@ def produce_shared_matches_df():
     shared_matches_production_statement(summary_df, shared_matches_df)
     return shared_matches_df
 
-# Level 1 # second shared_matches sub-program
+#L1 # second shared_matches sub-program
 # create three (strict, majority, plurality) consensus dfs, then join them to shared_matches
-def add_consensus_sequences(shared_matches_df):
+def add_consensus_sequences(shared_matches_df, output_columns):
     pre_consensus_df = shared_matches_df.copy()
     barcode_columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
-    majority_consensus_df = create_majority_consensus_df(pre_consensus_df, shared_matches_df, barcode_columns, minimum_threshold=0.5, selected_filter='Cm')
-    strict_consensus_df = create_majority_consensus_df(pre_consensus_df, shared_matches_df, barcode_columns,
+    majority_consensus_df = create_majority_consensus_df(pre_consensus_df, shared_matches_df, barcode_columns, output_columns, minimum_threshold=0.5, selected_filter='Cm')
+    strict_consensus_df = create_majority_consensus_df(pre_consensus_df, shared_matches_df, barcode_columns, output_columns,
                                                          minimum_threshold=0.99, selected_filter='Cs')
     shared_matches_with_consensus_df = concatenate_dfs(shared_matches_df, majority_consensus_df, strict_consensus_df)
     shared_matches_with_consensus_df = shared_matches_with_consensus_df.sort_values(by='Query#')
     write_csv(shared_matches_with_consensus_df, 'smwc.csv')
+    return shared_matches_with_consensus_df
 
+#L1 # third shared_matches sub-program
+# merges the shared_matches and consensus_sequences with the summary_df, after preparation
+def combine_shared_matches_and_summary(database_df, summary_df, shared_matches_with_consensus_df, output_columns, region):
+    summary_df = reorganise_summary_df(summary_df, database_df)
+    merged_df = merge_shared_matches_to_summary(shared_matches_with_consensus_df, summary_df, output_columns, region)
+    return merged_df
+
+### Third sub-program
+#L2 # Prepares the summary df for merging with the new shared matches df
+def reorganise_summary_df(summary_df, database_df):
+    # summary_df, na_rows_df = remove_na_rows(summary_df)
+    summary_df = expand_summary_df(summary_df)
+    database_df = reorganise_database_df(database_df)
+    summary_df = merge_summary_with_db(summary_df, database_df)
+    summary_df = check_merge_correct(summary_df)
+    return summary_df
+
+#L3 # Converts summary df to correct format and adds detail
+def expand_summary_df(summary_df):
+    summary_df = summary_df.rename(columns={'DB Name': 'Name', 'DB Accession Number': 'Accession Number', 'Vs Name': 'DB Name', 'Alternative Matches': 'Shared Matches' })
+    # # Convert columns to the types they would have been without the 'N/A' rows
+    # summary_df['Vs DB#'] = summary_df['Vs DB#'].astype('float64')
+    # summary_df['Shared Matches'] = summary_df['Shared Matches'].astype('float64')
+    # summary_df['Similarity(%)'] = summary_df['Similarity(%)'].astype('float64')
+    summary_df['Shared Matches'] = summary_df['Shared Matches']+1   # converts alternative to shared
+    summary_df = summary_df.assign(Selected=lambda x: 'Y')  # Adds'Selected' column - value string 'Y'
+    summary_df = summary_df[['Query#', 'Hun#', 'Fas#', 'Accession Number', 'Name', 'Shared Matches', 'Selected', 'Similarity(%)', 'Vs DB#', 'DB Name', '16S rRNA sequence']]
+    return summary_df
+
+#L3 # Adapt database df for merging with summary df
+def reorganise_database_df(database_df):
+    # Keep only specified columns in specified order
+    database_df = database_df[['DB#', 'DB Name', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'DB Accession Number']]
+    database_df = database_df.rename(columns={'DB#': 'Vs DB#', 'DB Name': 'dbDB Name'})
+    return database_df
+
+#L3 # Merge the summary and database dfs using the 'Vs Db#' column
+def merge_summary_with_db(summary_df, database_df):
+    merged_df = summary_df.merge(database_df, on='Vs DB#', how='inner')
+    return merged_df
+
+#L3 # check for summary & databased df merge
+def check_merge_correct(merged_df):
+    # Iterate through each row and check if 'DB Name' and 'dbDB Name' match
+    match = True
+    for index, row in merged_df.iterrows():
+        if row['DB Name'] != row['dbDB Name']:
+            match = False
+            break
+    # Print the result and delete 'dbDB Name' if all rows match
+    if match:
+        print("The merged dfs match")
+        del merged_df['dbDB Name']
+    else:
+        print("The merged dfs DO NOT match")
+    return merged_df
+
+#L2 # Merges prepared summary df with shared matches df
+def merge_shared_matches_to_summary(shared_matches_with_consensus_df, summary_df, output_columns, region):
+    shared_matches_with_consensus_df = edit_shared_df(shared_matches_with_consensus_df)
+    if check_shared_matches_balance(shared_matches_with_consensus_df, summary_df):
+        print('Check was true')
+        shared_matches_with_consensus_df, summary_df = order_dfs_for_merge(shared_matches_with_consensus_df, summary_df, output_columns)
+        write_csv(summary_df, 'fgh.csv')
+        merged_df = pd.concat([summary_df, shared_matches_with_consensus_df], axis=0, ignore_index=True)
+        # merged_df = concatenate_dfs(summary_df, shared_matches_with_consensus_df)  # not working atm - fix (instead of above)
+        merged_df = add_identifying_column(merged_df, region)
+        write_csv(merged_df, 'merged1.csv')
+    else:
+        exit()
+
+    return merged_df
+
+#L3 # edit shared matches df ahead of merge
+def edit_shared_df(shared_df):
+    shared_df.loc[shared_df['Selected'] == 'Y', 'Selected'] = 'Y.'
+    fillna_columns = ['Similarity(%)', 'Vs DB#', 'DB Name', 'DB Accession Number']  # this may be to do with the way na values are read, and might not be necessary when the df is passed through the program.
+    for column in fillna_columns:                                                   #
+        shared_df[column].fillna('N/A', inplace=True)                               #
+    # shared_df['Vs DB#'] = shared_df['Vs DB#'].apply(str)                 # used to be necessary, leaving as might be again when I reintroduce the nan lines.
+    shared_df['Vs DB#'] = shared_df['Vs DB#'].apply(remove_db_string)
+    return shared_df
+
+def remove_db_string(s):
+    if s == 'N/A':
+        return s
+    return int(s.replace('DB#_', ''))
+
+#L3 # Check that the consensus file has all the queries.................
+def check_shared_matches_balance(sum_df, smwc_df):
+    smwc_queries = list(set(sorted(smwc_df[smwc_df['Shared Matches'] > 1]['Query#'].tolist())))
+    sum_queries = list(set(sorted(sum_df[sum_df['Shared Matches'] > 1]['Query#'].tolist())))
+    if smwc_queries == sum_queries:
+        print('The summary df and shared matches df agree')
+        return True
+    else:
+        not_in_smwc = list(set(sum_queries) - set(smwc_queries))
+        not_in_sum = list(set(smwc_queries) - set(sum_queries))
+        if not_in_smwc > 0 and not_in_sum > 0:
+            print(f'The summary df contains queries not contained in the shared matches df: {not_in_smwc}. The shared matches df contains queries not contained in the summary df: {not_in_sum}.')
+        elif not_in_smwc > 0 and not_in_sum == 0:
+            print(f'The summary df contains queries not contained in the shared matches df: {not_in_smwc}.')
+        elif not_in_smwc == 0 and not_in_sum > 0:
+            print(f'The shared matches df contains queries not contained in the summary df: {not_in_sum}.')
+        return False
+
+#L3 # Check and reorder cdf columns ahead of merge
+def order_dfs_for_merge(smwc_df, sum_df, output_columns):
+    smwc_columns = smwc_df.columns.tolist()
+    sum_columns = sum_df.columns.tolist()
+    if set(sum_columns) != set(output_columns) or set(smwc_columns) != set(output_columns):
+        print("the sum and smwc columns do not agree with the list")
+        return
+    else:
+        print("the sum and smwc columns do agree with the list")
+        smwc_df = smwc_df[output_columns]
+        sum_df = sum_df[output_columns]
+    return smwc_df, sum_df
+
+#L3 # Add columns identifying region analysed & re-order df
+def add_identifying_column(merged_df, region):
+    merged_df.insert(5, "Region", region)
+    sort_order = ['Y', 'Y.', 'Yna', 'N', 'Cs', 'Cm', 'Cp']
+    cat_type = pd.CategoricalDtype(categories=sort_order, ordered=True)
+    merged_df['Selected'] = merged_df['Selected'].astype(cat_type)
+    merged_df = merged_df.sort_values(by='Selected',
+                                      ascending=True,
+                                      kind='mergesort',
+                                      na_position='last')
+    merged_df = merged_df.sort_values(by='Query#',
+                                      ascending=True,
+                                      kind='mergesort')
+    return merged_df
+
+### Second sub-program
 # Level 2 # create majority consensus df
-def create_majority_consensus_df(pre_consensus_df, shared_matches_df, barcode_columns, minimum_threshold, selected_filter):
+def create_majority_consensus_df(pre_consensus_df, shared_matches_df, barcode_columns, output_columns, minimum_threshold, selected_filter):
     # pre_consensus_df = pre_consensus_df.copy()
     pre_consensus_df, consensus_df = add_majority_barcodes(pre_consensus_df, barcode_columns, minimum_threshold)
     pre_consensus_df, matching_df = additional_consensus_barcode_filtering(pre_consensus_df, barcode_columns)
     consensus_df = concatenate_dfs(consensus_df, matching_df)
     consensus_df = fill_consensus_df_missing_values(pre_consensus_df, consensus_df, shared_matches_df, barcode_columns)
     check_consensus_df_correct (consensus_df, shared_matches_df)
-    consensus_df = prepare_consensus_df_for_merge_with_shared_matches_df(consensus_df, barcode_columns, selected_filter)
+    consensus_df = prepare_consensus_df_for_merge_with_shared_matches_df(consensus_df, barcode_columns, selected_filter, output_columns)
     return consensus_df
 
 # Level 3 # filters shared matches and adds majority consensus barcodes. Returns processed queries in consensus_df, and unprocessed queries in pre_consensus_df
@@ -102,7 +240,7 @@ def fill_consensus_df_missing_values(pre_consensus_df, consensus_df, shared_matc
         check_queries_complete_two(consensus_df, shared_matches_df)
         consensus_df = remove_duplicated_processed_queries(consensus_df)
         consensus_df, new_barcode_columns = add_missing_columns(consensus_df, barcode_columns)
-        consensus_df = consensus_df.copy()
+        consensus_df = consensus_df.copy()      # added in to prevent Setting with Copy Warning
         consensus_df = replace_nans(consensus_df, new_barcode_columns)
         return consensus_df
     else:
@@ -167,7 +305,7 @@ def check_consensus_df_correct (consensus_df, shared_matches_df):
     check_df_column_unique_entries_only(consensus_df, 'Query#')
 
 #L3 # prepares consensus_df for merging with shared_matches_df
-def prepare_consensus_df_for_merge_with_shared_matches_df(consensus_df, barcode_columns, selected_filter):
+def prepare_consensus_df_for_merge_with_shared_matches_df(consensus_df, barcode_columns, selected_filter, output_columns):
     consensus_df = consensus_df.drop(columns=barcode_columns)       # drops old barcode columns
     consensus_df = consensus_df.rename(
         columns={'a': 'A', 'b': 'B', 'c': 'C', 'd': 'D', 'e': 'E', 'f': 'F', 'g': 'G', 'h': 'H', 'i': 'I', 'j': 'J',
@@ -178,7 +316,7 @@ def prepare_consensus_df_for_merge_with_shared_matches_df(consensus_df, barcode_
     consensus_df['Vs DB#'] = 'N/A'
     consensus_df['DB Name'] = 'N/A'
     consensus_df['DB Accession Number'] = 'N/A'
-    curated_vsearch_output, database_df, query_df, summary_df, output_columns = read_inputs()
+    # curated_vsearch_output, database_df, query_df, summary_df, output_columns = read_inputs()
     if set(output_columns).issubset(set(consensus_df.columns)):
         consensus_df = consensus_df.reindex(output_columns, axis=1)
     else:
@@ -188,15 +326,20 @@ def prepare_consensus_df_for_merge_with_shared_matches_df(consensus_df, barcode_
 ## functions for produce_shared_matches_df
 # read the inputs produced from mapping - these will be passed to the function when integrating into the the new mapping.py
 def read_inputs():
-    curated_vsearch_output = read_csv('Query_vs_All.csv')
-    database_df = read_csv('db_497.csv')
-    query_df = read_csv('V1V3.csv')
+    # curated_vsearch_output = read_csv('Query_vs_All.csv')
+    # database_df = read_csv('db_497.csv')
+    # query_df = read_csv('V1V3.csv')
     summary_df = read_csv('Summary_V1V3_vs_db_497.csv')
+    curated_vsearch_output = pd.read_csv('Query_vs_All.csv', na_filter=False)
+    database_df = pd.read_csv('db_497.csv', na_filter=False)
+    query_df = pd.read_csv('V1V3.csv', na_filter=False)
+    # summary_df = pd.read_csv('Summary_V1V3_vs_db_497.csv', na_filter=False)
+    region = 'V1V3'
     output_columns = ['Query#', 'Hun#', 'Fas#', 'Accession Number', 'Name', 'Shared Matches', 'Selected', 'Similarity(%)',
                     'Vs DB#',
                     'DB Name', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
                     'DB Accession Number', '16S rRNA sequence']
-    return curated_vsearch_output, database_df, query_df, summary_df, output_columns
+    return curated_vsearch_output, database_df, query_df, summary_df, output_columns, region
 
 # adds input sequence detail to the curated vsearch output df
 def merge_query_with_vsearch_output(vsearch_df, query_df):
