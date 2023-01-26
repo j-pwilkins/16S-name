@@ -15,11 +15,47 @@ def main():
     write_csv(summary_df, 'summary.csv')
 
 #L1
+def read_inputs():
+    # input_sequences_list = sys.argv[1]
+    input_sequences_list = 'test_30.csv'
+    # input_database = sys.argv[2]
+    input_database = 'db_497.csv'
+    vsearch_output = 'vsearch_blast6_output.csv'
+    curated_vsearch_output = 'Query_vs_All.csv'
+    text_insert = '_vs_'
+    region = 'unknown'
+    output_directory = input_sequences_list.rstrip('.csv') + text_insert + input_database.rstrip('.csv')
+    output_file = 'Summary_' + output_directory + '.csv'
+    return input_sequences_list, input_database, vsearch_output, curated_vsearch_output, output_directory, output_file, region
+
+#L1
+def organise_directories(output_directory, input_sequences_list, input_database, vsearch_output):
+    if os.path.exists(output_directory):
+        shutil.rmtree(output_directory)
+        print(f'The previous {output_directory} folder has been deleted')
+    os.makedirs(output_directory, exist_ok=True)
+    shutil.copy(input_sequences_list, output_directory)
+    shutil.copy(input_database, output_directory)
+    shutil.copy(vsearch_output, output_directory)       # temp file until in Kelvin
+    os.chdir(output_directory)
+
+#L1 # Read in .csv files, create fasta, run vsearch
+def prepare_then_run_vsearch(input_sequences_list, input_database, vsearch_output, region):
+    query_df, database_df, length_of_query, length_of_database, query_fastaname, database_fastaname = import_and_prepare_files(input_sequences_list, input_database, region)
+    for i in range(length_of_query):
+        convert_query_to_fasta(query_df, query_fastaname, i)
+    for i in range(length_of_database):
+        convert_db_to_fasta(database_df, database_fastaname, i)
+    run_vsearch(query_fastaname, database_fastaname, vsearch_output)
+    return database_df, query_df
+
+#L1
 def map_vsearch_output_to_database(curated_vsearch_output, database_df, output_file, query_df, vsearch_output):
     query_vs_target_db_df = parse_vsearch_usearchglobal_blast6(vsearch_output, curated_vsearch_output)
     curated_df, summary_df = map_regions_to_full_sequences(database_df, query_df, query_vs_target_db_df)
     return curated_df, summary_df
 
+###### map_vsearch_output_to_database
 #L2
 def map_regions_to_full_sequences(database_df, query_df, query_vs_target_db_df):
     curated_df = purge_self_references(query_vs_target_db_df)
@@ -28,6 +64,7 @@ def map_regions_to_full_sequences(database_df, query_df, query_vs_target_db_df):
     curated_df = add_database_detail_for_matches(curated_df, database_df)
     curated_df = add_query_detail(curated_df, database_df, query_df)
     summary_df = create_short_summary_output(curated_df)
+    check_summary_complete(query_df, summary_df)
     return curated_df, summary_df
 
 def purge_self_references(query_vs_target_db_df):
@@ -71,6 +108,12 @@ def create_short_summary_output(curated_df):
     summary_df = summary_df.drop_duplicates(subset='Query#', keep='first')
     return summary_df
 
+def check_summary_complete(query_df, summary_df):
+    print(f'A summary of {len(summary_df)} mapped sequences has been created.')
+    summary_df.name = 'the summary'
+    check_unique_values(query_df, summary_df, 'Query#')
+
+
 #Helper # Checks all groups in column 1 have the same value in column 2, before e.g. group rows are dropped
 def check_groups_match_before_drop(df, col1, col2):
     groups = df.groupby(col1)   # group by 1st column
@@ -85,7 +128,7 @@ def check_groups_match_before_drop(df, col1, col2):
     else:
         print('There is a discrepancy in the grouped similarities for the summary_df')
 
-
+##### prepare_then_run_vsearch
 #L2 # Take vsearch output file and make it useable
 def parse_vsearch_usearchglobal_blast6(vsearch_output, curated_vsearch_output):
     query_vs_target_db_df = pd.read_csv(vsearch_output, usecols=[0, 1, 2], sep='\t',
@@ -99,45 +142,11 @@ def parse_vsearch_usearchglobal_blast6(vsearch_output, curated_vsearch_output):
     query_vs_target_db_df.to_csv(curated_vsearch_output, sep=',', index=False)
     return query_vs_target_db_df
 
-#L1
-def read_inputs():
-    # input_sequences_list = sys.argv[1]
-    input_sequences_list = 'test_30.csv'
-    # input_database = sys.argv[2]
-    input_database = 'db_497.csv'
-    vsearch_output = 'vsearch_blast6_output.csv'
-    curated_vsearch_output = 'Query_vs_All.csv'
-    text_insert = '_vs_'
-    region = 'unknown'
-    output_directory = input_sequences_list.rstrip('.csv') + text_insert + input_database.rstrip('.csv')
-    output_file = 'Summary_' + output_directory + '.csv'
-    return input_sequences_list, input_database, vsearch_output, curated_vsearch_output, output_directory, output_file, region
-
-#L1
-def organise_directories(output_directory, input_sequences_list, input_database, vsearch_output):
-    if os.path.exists(output_directory):
-        shutil.rmtree(output_directory)
-        print(f'The previous {output_directory} folder has been deleted')
-    os.makedirs(output_directory, exist_ok=True)
-    shutil.copy(input_sequences_list, output_directory)
-    shutil.copy(input_database, output_directory)
-    shutil.copy(vsearch_output, output_directory)       # temp file until in Kelvin
-    os.chdir(output_directory)
-
-#L1 # Read in .csv files, create fasta, run vsearch
-def prepare_then_run_vsearch(input_sequences_list, input_database, vsearch_output, region):
-    query_df, database_df, length_of_query, length_of_database, query_fastaname, database_fastaname = import_and_prepare_files(input_sequences_list, input_database, region)
-    for i in range(length_of_query):
-        convert_query_to_fasta(query_df, query_fastaname, i)
-    for i in range(length_of_database):
-        convert_db_to_fasta(database_df, database_fastaname, i)
-    run_vsearch(query_fastaname, database_fastaname, vsearch_output)
-    return database_df, query_df
-
 #L2
 def import_and_prepare_files(input_sequences_list, input_database, region):
     query_df = read_csv(input_sequences_list)
     query_df = query_df.replace(np.nan, '', regex=True)
+    query_df.name = input_sequences_list[:-4]  # remove .csv from the string
     database_df = read_csv(input_database)
     length_of_query = len(query_df.index.tolist())
     length_of_database = len(database_df.index.tolist())
