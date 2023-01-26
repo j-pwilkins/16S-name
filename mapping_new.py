@@ -9,14 +9,95 @@ pd.options.display.max_columns = None
 def main():
     start_time = datetime.now()
     input_sequences_list, input_database, vsearch_output, curated_vsearch_output, output_directory, output_file, region = read_inputs()
-    organise_directories(output_directory, input_sequences_list, input_database)
+    organise_directories(output_directory, input_sequences_list, input_database, vsearch_output)
     database_df, query_df = prepare_then_run_vsearch(input_sequences_list, input_database, vsearch_output, region)
+    curated_df, summary_df = map_vsearch_output_to_database(curated_vsearch_output, database_df, output_file, query_df, vsearch_output)
+    write_csv(summary_df, 'summary.csv')
 
 #L1
 def map_vsearch_output_to_database(curated_vsearch_output, database_df, output_file, query_df, vsearch_output):
-    parse_vsearch_usearchglobal_blast6(vsearch_output, curated_vsearch_output)
-    add_similarity_columns(curated_vsearch_output)
-    create_output_file(query_df, database_df, curated_vsearch_output, output_file)
+    query_vs_target_db_df = parse_vsearch_usearchglobal_blast6(vsearch_output, curated_vsearch_output)
+    curated_df, summary_df = map_regions_to_full_sequences(database_df, query_df, query_vs_target_db_df)
+    return curated_df, summary_df
+
+#L2
+def map_regions_to_full_sequences(database_df, query_df, query_vs_target_db_df):
+    curated_df = purge_self_references(query_vs_target_db_df)
+    curated_df = retain_only_highest_similarities(curated_df)
+    curated_df = add_alternative_matches_column(curated_df)
+    curated_df = add_database_detail_for_matches(curated_df, database_df)
+    curated_df = add_query_detail(curated_df, database_df, query_df)
+    summary_df = create_short_summary_output(curated_df)
+    return curated_df, summary_df
+
+def purge_self_references(query_vs_target_db_df):
+    mask = query_vs_target_db_df['Q'] != query_vs_target_db_df['T']
+    return query_vs_target_db_df[mask]
+
+def retain_only_highest_similarities(curated_df):
+    grouped = curated_df.groupby('Query')
+    highest_similarity_df = grouped.apply(lambda x: x.nlargest(len(x[x['Similarity(%)'] == x['Similarity(%)'].max()]), 'Similarity(%)'))
+    return highest_similarity_df.reset_index(drop=True)
+
+def add_alternative_matches_column(curated_df):
+    curated_df["Shared Matches"] = curated_df["Query"].map(curated_df["Query"].value_counts())
+    return curated_df
+
+def add_database_detail_for_matches(curated_df, database_df):
+    db_columns_to_be_added_to_df = ['DB#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'DB Name', 'DB Accession Number', 'DB Found']
+    database_df = database_df[db_columns_to_be_added_to_df]
+    database_df = database_df.rename(columns={'DB#': 'T'})
+    curated_df = curated_df[['Query', 'DB#', 'Similarity(%)', 'Shared Matches', 'Q', 'T']]
+    curated_df = pd.merge(curated_df, database_df, on='T')
+    curated_df = curated_df.rename(columns={'T': 'Vs DB#', 'DB Name': 'Vs Name'})
+    return curated_df
+
+def add_query_detail(curated_df, database_df, query_df):
+    query_df = query_df.rename(columns={'Query#': 'Q', 'DB Accession Number': 'Q Accession Number', 'DB Name': 'Q Name'})
+    query_columns_to_be_added_to_df = ['Q', 'Hun#', 'Fas#', 'Q Name', 'Q Accession Number']
+    query_df = query_df.loc[:, query_columns_to_be_added_to_df]
+    curated_df = pd.merge(curated_df, query_df, on='Q')
+    # new_column_order = ['Query#', 'Hun#', 'Fas#', 'Tree#', 'Query Accession Number', 'Name', 'Alternative Matches', 'Similarity(%)', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'Vs DB#', 'Vs Name', 'DB Accession Number', '16S rRNA sequence']
+    # curated_df = curated_df [new_column_order]
+    return curated_df
+
+def create_short_summary_output(curated_df):
+    summary_columns = ['Query#', 'Hun#', 'Fas#', 'Q Name', 'Q Accession Number', 'Similarity(%)', 'Vs Name', 'DB Accession Number', 'Alternative Matches']
+    curated_df = curated_df.rename(columns={'Q': 'Query#'})
+    curated_df['Alternative Matches'] = curated_df['Shared Matches'] - 1
+    summary_df = curated_df.loc[:, summary_columns]
+    summary_df = summary_df.sort_values(by='Query#', ascending=True)
+    check_groups_match_before_drop(summary_df, 'Query#', 'Similarity(%)')
+    summary_df = summary_df.drop_duplicates(subset='Query#', keep='first')
+    return summary_df
+
+#Helper # Checks all groups in column 1 have the same value in column 2, before e.g. group rows are dropped
+def check_groups_match_before_drop(df, col1, col2):
+    groups = df.groupby(col1)   # group by 1st column
+    all_groups_match = True # Initialize a variable to store col 2 info
+    for group in groups:
+        unique_values = group[1][col2].unique()
+        if len(unique_values) != 1:
+            all_groups_match = False
+            break
+    if all_groups_match:
+        return
+    else:
+        print('There is a discrepancy in the grouped similarities for the summary_df')
+
+
+#L2 # Take vsearch output file and make it useable
+def parse_vsearch_usearchglobal_blast6(vsearch_output, curated_vsearch_output):
+    query_vs_target_db_df = pd.read_csv(vsearch_output, usecols=[0, 1, 2], sep='\t',
+                                            names=["Query", "DB#", "Similarity(%)"])
+    df_length = len(query_vs_target_db_df)
+    vsearch_output_order = pd.Series(np.arange(1, df_length + 1, 1))
+    query_vs_target_db_df.insert(0, 'Vsearch Order', vsearch_output_order, True)
+    query_vs_target_db_df['Q'] = query_vs_target_db_df['Query'].str[6:].astype(int)
+    query_vs_target_db_df['T'] = query_vs_target_db_df['DB#'].str[4:].astype(int)
+    query_vs_target_db_df = query_vs_target_db_df.sort_values(['Q', 'T'])
+    query_vs_target_db_df.to_csv(curated_vsearch_output, sep=',', index=False)
+    return query_vs_target_db_df
 
 #L1
 def read_inputs():
@@ -33,13 +114,14 @@ def read_inputs():
     return input_sequences_list, input_database, vsearch_output, curated_vsearch_output, output_directory, output_file, region
 
 #L1
-def organise_directories(output_directory, input_sequences_list, input_database):
+def organise_directories(output_directory, input_sequences_list, input_database, vsearch_output):
     if os.path.exists(output_directory):
         shutil.rmtree(output_directory)
         print(f'The previous {output_directory} folder has been deleted')
     os.makedirs(output_directory, exist_ok=True)
     shutil.copy(input_sequences_list, output_directory)
     shutil.copy(input_database, output_directory)
+    shutil.copy(vsearch_output, output_directory)       # temp file until in Kelvin
     os.chdir(output_directory)
 
 #L1 # Read in .csv files, create fasta, run vsearch
