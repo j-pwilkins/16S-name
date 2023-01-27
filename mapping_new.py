@@ -13,35 +13,12 @@ def main():
     database_df, query_df, length_of_query, query_fastaname, database_fastaname = prepare_then_run_vsearch(input_sequences_list, input_database, vsearch_output, region)
     curated_df, summary_df = map_vsearch_output_to_database(curated_vsearch_output, database_df, query_df,
                                                             vsearch_output)
-    shared_matches_df, unique_df, sm_unique_queries = produce_shared_matches_df(curated_df, output_columns)
+    shared_matches_df, unique_df, sm_unique_queries = produce_shared_matches_df(curated_df, output_columns, region)
     shared_matches_with_consensus_df = add_consensus_sequences(shared_matches_df, sm_unique_queries, barcode_columns,
                                                                output_columns)
-    final_df = combine_shared_matches_and_unique_dfs(shared_matches_with_consensus_df, unique_df)
+    final_df = combine_shared_matches_and_unique_dfs(shared_matches_with_consensus_df, unique_df, database_df)
     length_of_output = file_outputs(final_df, summary_df, output_filename, summary_filename, query_df, curated_vsearch_output, query_fastaname, database_fastaname, vsearch_output, input_sequences_list, input_database)
     summary_statement(length_of_output, start_time)
-
-##### L1 # Move files and make sure things are where they need to be
-def file_outputs(final_df, summary_df, output_filename, summary_filename, query_df, curated_vsearch_output, query_fastaname, database_fastaname, vsearch_output, input_sequences_list, input_database):
-    length_of_output = output_checks(final_df, query_df, output_filename)
-    tidy_files(curated_vsearch_output, query_fastaname, database_fastaname, vsearch_output, input_sequences_list, input_database)
-    write_csv(final_df, output_filename)
-    write_csv(summary_df, summary_filename)
-    return length_of_output
-
-def output_checks(final_df, query_df, output_filename):
-    length_of_output = final_df['Query#'].nunique()
-    final_df.name = os.path.splitext(output_filename)[0]
-    check_unique_values(query_df, final_df, 'Query#')
-    return length_of_output
-
-def tidy_files(curated_vsearch_output, query_fastaname, database_fastaname, vsearch_output, input_sequences_list, input_database):
-    os.mkdir('data')
-    shutil.move(curated_vsearch_output, 'data')
-    shutil.move(vsearch_output, 'data')
-    shutil.move(query_fastaname, 'data')
-    shutil.move(database_fastaname, 'data')
-    shutil.move(input_sequences_list, 'data')
-    shutil.move(input_database, 'data')
 
 ##### L1
 def summary_statement(length_of_output, start_time):
@@ -57,7 +34,7 @@ def read_inputs():
     vsearch_output = 'vsearch_blast6_output.csv'
     curated_vsearch_output = 'Query_vs_All.csv'
     text_insert = '_vs_'
-    region = 'unknown'
+    region = input_sequences_list.rstrip('.csv')
     output_directory = input_sequences_list.rstrip('.csv') + text_insert + input_database.rstrip('.csv')
     output_filename = 'Complete_list_of_sequences_' + output_directory + '.csv'
     summary_filename = 'Short_summary_' + output_directory + '.csv'
@@ -221,16 +198,16 @@ def check_short_summary_complete(query_df, summary_df):
     check_unique_values(query_df, summary_df, 'Query#')
 
 ###### L1 # Take the curated_df and split for further analysis
-def produce_shared_matches_df(curated_df, output_columns):
-    output_df = produce_output_df(curated_df, output_columns)
+def produce_shared_matches_df(curated_df, output_columns, region):
+    output_df = produce_output_df(curated_df, output_columns, region)
     shared_matches_df, unique_df, sm_unique_queries, length_of_shared_matches_df = split_output_df(output_df)
     print(f'{length_of_shared_matches_df} of the queries have multiple possible matches. Consensus sequences will be produced for them.')
     return shared_matches_df, unique_df, sm_unique_queries
 
 ### L2 # The curated output from vsearch is formatted ready for the output csv
-def produce_output_df(curated_df, output_columns):
+def produce_output_df(curated_df, output_columns, region):
     curated_df = curated_df.rename(columns={'Q': 'Query#', 'Vs Name': 'DB Name'})
-    curated_df['Region'] = 'test'
+    curated_df['Region'] = region
     curated_df = add_selected_column(curated_df)
     curated_df = curated_df.sort_values(by=['Query#', 'Vs DB#']).reset_index(drop=True)
     curated_df.name = 'curated_df'
@@ -500,9 +477,48 @@ def prepare_consensus_df_for_merge_with_shared_matches_df(consensus_df, barcode_
     return consensus_df
 
 ##### L1
-def combine_shared_matches_and_unique_dfs(shared_matches_with_consensus_df, unique_df):
+def combine_shared_matches_and_unique_dfs(shared_matches_with_consensus_df, unique_df, database_df):
     final_df = concatenate_dfs(shared_matches_with_consensus_df, unique_df)
+    final_df = add_detail_for_xls_file(final_df, database_df)
     return final_df
+
+### L2
+def add_detail_for_xls_file(final_df, database_df):
+    final_df = add_tree_order_column(final_df, database_df)
+    return final_df
+
+def add_tree_order_column(final_df, database_df):
+    tree_df = database_df[['DB#', 'Tree#']]
+    final_df = final_df.merge(tree_df, left_on='Query#', right_on='DB#', how='left')
+    final_df.insert(final_df.columns.get_loc('Query#')+3, 'Tree#', final_df.pop('Tree#'))
+    final_df.drop(columns=['DB#'], inplace=True)
+    return final_df
+
+
+##### L1 # Move files and make sure things are where they need to be
+def file_outputs(final_df, summary_df, output_filename, summary_filename, query_df, curated_vsearch_output, query_fastaname, database_fastaname, vsearch_output, input_sequences_list, input_database):
+    length_of_output = output_checks(final_df, query_df, output_filename)
+    tidy_files(curated_vsearch_output, query_fastaname, database_fastaname, vsearch_output, input_sequences_list, input_database)
+    write_csv(final_df, output_filename)
+    write_csv(summary_df, summary_filename)
+    return length_of_output
+
+### L2
+def output_checks(final_df, query_df, output_filename):
+    length_of_output = final_df['Query#'].nunique()
+    final_df.name = os.path.splitext(output_filename)[0]
+    check_unique_values(query_df, final_df, 'Query#')
+    return length_of_output
+
+### L2
+def tidy_files(curated_vsearch_output, query_fastaname, database_fastaname, vsearch_output, input_sequences_list, input_database):
+    os.mkdir('data')
+    shutil.move(curated_vsearch_output, 'data')
+    shutil.move(vsearch_output, 'data')
+    shutil.move(query_fastaname, 'data')
+    shutil.move(database_fastaname, 'data')
+    shutil.move(input_sequences_list, 'data')
+    shutil.move(input_database, 'data')
 
 ####### Helper functions
 
