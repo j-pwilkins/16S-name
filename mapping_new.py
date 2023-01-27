@@ -27,10 +27,10 @@ def summary_statement(length_of_output, start_time):
 
 ##### L1
 def read_inputs():
-    # input_sequences_list = sys.argv[1]
-    input_sequences_list = 'test_30.csv'
-    # input_database = sys.argv[2]
-    input_database = 'db_497.csv'
+    input_sequences_list = sys.argv[1]
+    # input_sequences_list = 'V1V3.csv'
+    input_database = sys.argv[2]
+    # input_database = 'db_497.csv'
     vsearch_output = 'vsearch_blast6_output.csv'
     curated_vsearch_output = 'Query_vs_All.csv'
     text_insert = '_vs_'
@@ -53,7 +53,7 @@ def organise_directories(output_directory, input_sequences_list, input_database,
     os.makedirs(output_directory, exist_ok=True)
     shutil.copy(input_sequences_list, output_directory)
     shutil.copy(input_database, output_directory)
-    shutil.copy(vsearch_output, output_directory)  # temp file until in Kelvin
+    # shutil.copy(vsearch_output, output_directory)  # temp file until in Kelvin
     os.chdir(output_directory)
 
 ##### L1 # Read in .csv files, create fasta, run vsearch
@@ -107,8 +107,8 @@ def convert_db_to_fasta(database_df, database_fastaname, i):
 
 ### L2 # Run vsearch - might need further function for --minwordmatches decision
 def run_vsearch(query_fastaname, database_fastaname, vsearch_output):
-    # cmd = 'vsearch --usearch_global ' + query_fastaname + ' --db ' + database_fastaname + ' --blast6out ' + vsearch_output + ' --acceptall --id 0.0 --maxaccepts 0 --minwordmatches 3'
-    # os.system(cmd)
+    cmd = 'vsearch --usearch_global ' + query_fastaname + ' --db ' + database_fastaname + ' --blast6out ' + vsearch_output + ' --acceptall --id 0.0 --maxaccepts 0 --minwordmatches 3'
+    os.system(cmd)
     print('vsearch has finished')
 
 ##### L1 # uses the vsearch output to map each regional query to full 16S sequence(s)
@@ -479,6 +479,7 @@ def prepare_consensus_df_for_merge_with_shared_matches_df(consensus_df, barcode_
 ##### L1
 def combine_shared_matches_and_unique_dfs(shared_matches_with_consensus_df, unique_df, database_df):
     final_df = concatenate_dfs(shared_matches_with_consensus_df, unique_df)
+    final_df.sort_values(by='Query#', ascending=True, inplace=True)
     final_df = add_detail_for_xls_file(final_df, database_df)
     return final_df
 
