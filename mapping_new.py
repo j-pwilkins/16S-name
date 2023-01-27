@@ -8,16 +8,45 @@ pd.options.display.max_columns = None
 
 def main():
     start_time = datetime.now()
-    input_sequences_list, input_database, vsearch_output, curated_vsearch_output, output_directory, output_file, output_columns, region, barcode_columns = read_inputs()
+    input_sequences_list, input_database, vsearch_output, curated_vsearch_output, output_directory, output_filename, summary_filename, output_columns, region, barcode_columns = read_inputs()
     organise_directories(output_directory, input_sequences_list, input_database, vsearch_output)
-    database_df, query_df = prepare_then_run_vsearch(input_sequences_list, input_database, vsearch_output, region)
-    curated_df, summary_df = map_vsearch_output_to_database(curated_vsearch_output, database_df, output_file, query_df,
+    database_df, query_df, length_of_query, query_fastaname, database_fastaname = prepare_then_run_vsearch(input_sequences_list, input_database, vsearch_output, region)
+    curated_df, summary_df = map_vsearch_output_to_database(curated_vsearch_output, database_df, query_df,
                                                             vsearch_output)
     shared_matches_df, unique_df, sm_unique_queries = produce_shared_matches_df(curated_df, output_columns)
     shared_matches_with_consensus_df = add_consensus_sequences(shared_matches_df, sm_unique_queries, barcode_columns,
                                                                output_columns)
     final_df = combine_shared_matches_and_unique_dfs(shared_matches_with_consensus_df, unique_df)
-    write_csv(final_df, 'final.csv')
+    length_of_output = file_outputs(final_df, summary_df, output_filename, summary_filename, query_df, curated_vsearch_output, query_fastaname, database_fastaname, vsearch_output, input_sequences_list, input_database)
+    summary_statement(length_of_output, start_time)
+
+##### L1 # Move files and make sure things are where they need to be
+def file_outputs(final_df, summary_df, output_filename, summary_filename, query_df, curated_vsearch_output, query_fastaname, database_fastaname, vsearch_output, input_sequences_list, input_database):
+    length_of_output = output_checks(final_df, query_df, output_filename)
+    tidy_files(curated_vsearch_output, query_fastaname, database_fastaname, vsearch_output, input_sequences_list, input_database)
+    write_csv(final_df, output_filename)
+    write_csv(summary_df, summary_filename)
+    return length_of_output
+
+def output_checks(final_df, query_df, output_filename):
+    length_of_output = final_df['Query#'].nunique()
+    final_df.name = os.path.splitext(output_filename)[0]
+    check_unique_values(query_df, final_df, 'Query#')
+    return length_of_output
+
+def tidy_files(curated_vsearch_output, query_fastaname, database_fastaname, vsearch_output, input_sequences_list, input_database):
+    os.mkdir('data')
+    shutil.move(curated_vsearch_output, 'data')
+    shutil.move(vsearch_output, 'data')
+    shutil.move(query_fastaname, 'data')
+    shutil.move(database_fastaname, 'data')
+    shutil.move(input_sequences_list, 'data')
+    shutil.move(input_database, 'data')
+
+##### L1
+def summary_statement(length_of_output, start_time):
+    program_length = datetime.now() - start_time
+    print(f'Mapping has completed in {program_length}. {length_of_output} queries have been processed.')
 
 ##### L1
 def read_inputs():
@@ -30,13 +59,14 @@ def read_inputs():
     text_insert = '_vs_'
     region = 'unknown'
     output_directory = input_sequences_list.rstrip('.csv') + text_insert + input_database.rstrip('.csv')
-    output_file = 'Summary_' + output_directory + '.csv'
+    output_filename = 'Complete_list_of_sequences_' + output_directory + '.csv'
+    summary_filename = 'Short_summary_' + output_directory + '.csv'
     output_columns = [
         'Query#', 'Hun#', 'Fas#', 'Q Accession Number', 'Q Name', 'Region', 'Shared Matches', 'Selected',
         'Similarity(%)', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'Vs DB#', 'DB Name',
         'DB Accession Number', 'Seq Length', '16S rRNA sequence']
     barcode_columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
-    return input_sequences_list, input_database, vsearch_output, curated_vsearch_output, output_directory, output_file, output_columns, region, barcode_columns
+    return input_sequences_list, input_database, vsearch_output, curated_vsearch_output, output_directory, output_filename, summary_filename, output_columns, region, barcode_columns
 
 ##### L1
 def organise_directories(output_directory, input_sequences_list, input_database, vsearch_output):
@@ -58,7 +88,7 @@ def prepare_then_run_vsearch(input_sequences_list, input_database, vsearch_outpu
     for i in range(length_of_database):
         convert_db_to_fasta(database_df, database_fastaname, i)
     run_vsearch(query_fastaname, database_fastaname, vsearch_output)
-    return database_df, query_df
+    return database_df, query_df, length_of_query, query_fastaname, database_fastaname
 
 ### L2
 def import_and_prepare_files(input_sequences_list, input_database, region):
@@ -105,7 +135,7 @@ def run_vsearch(query_fastaname, database_fastaname, vsearch_output):
     print('vsearch has finished')
 
 ##### L1 # uses the vsearch output to map each regional query to full 16S sequence(s)
-def map_vsearch_output_to_database(curated_vsearch_output, database_df, output_file, query_df, vsearch_output):
+def map_vsearch_output_to_database(curated_vsearch_output, database_df, query_df, vsearch_output):
     query_vs_target_db_df = parse_vsearch_usearchglobal_blast6(vsearch_output, curated_vsearch_output)
     curated_df, summary_df = map_regions_to_full_sequences(database_df, query_df, query_vs_target_db_df)
     return curated_df, summary_df
@@ -193,7 +223,8 @@ def check_short_summary_complete(query_df, summary_df):
 ###### L1 # Take the curated_df and split for further analysis
 def produce_shared_matches_df(curated_df, output_columns):
     output_df = produce_output_df(curated_df, output_columns)
-    shared_matches_df, unique_df, sm_unique_queries = split_output_df(output_df)
+    shared_matches_df, unique_df, sm_unique_queries, length_of_shared_matches_df = split_output_df(output_df)
+    print(f'{length_of_shared_matches_df} of the queries have multiple possible matches. Consensus sequences will be produced for them.')
     return shared_matches_df, unique_df, sm_unique_queries
 
 ### L2 # The curated output from vsearch is formatted ready for the output csv
@@ -232,6 +263,7 @@ def split_output_df(output_df):
     shared_matches_df = output_df[(output_df['Selected'] == 'Y.') | (output_df['Selected'] == 'N')]
     unique_df = output_df[output_df['Selected'] == 'Y']
     rump_df = output_df[~output_df.index.isin(shared_matches_df.index.union(unique_df.index))]
+    length_of_shared_matches_df = shared_matches_df['Query#'].nunique()
     if len(rump_df) > 0:
         print('Not all of the rows from the output_df have been processed.')
     elif len(shared_matches_df) + len(unique_df) != len(output_df):
@@ -243,7 +275,7 @@ def split_output_df(output_df):
             print("The output_df has not been split correctly")
         unique_df.name = 'Non-Shared Matches'
         check_df_column_unique_entries_only(unique_df, 'Query#')
-    return shared_matches_df, unique_df, sm_unique_queries
+    return shared_matches_df, unique_df, sm_unique_queries, length_of_shared_matches_df
 
 ###### L1 # Adds 3 sets of consensus sequences to shared_matches_df
 def add_consensus_sequences(shared_matches_df, sm_unique_queries, barcode_columns, output_columns):
@@ -484,7 +516,8 @@ def check_unique_values(df1, df2, column_header):
     unique_values_in_both_lists = list(set(unique_values_df1).intersection(unique_values_df2))
     number_of_shared_unique_values = len(unique_values_in_both_lists)
     if unique_values_df1 == unique_values_df2:
-        print(f"{df1.name} and {df2.name} are compatible. They contain {number_of_shared_unique_values} unique values in the '{column_header}' column.")
+        # print(f"{df1.name} and {df2.name} are compatible. They contain {number_of_shared_unique_values} unique values in the '{column_header}' column.")
+        return
     elif len(extra_unique_values_df1) > 0 and len(extra_unique_values_df2) > 0:
         print(f"{df1.name} and {df2.name} both contain extra unique values in the '{column_header}' column. They share {number_of_shared_unique_values} unique values. {df1.name} has {len(extra_unique_values_df1)} extra unique values. {df2.name} has {len(extra_unique_values_df2)} extra unique values.")
     elif len(extra_unique_values_df1) > 0 and len(extra_unique_values_df2) == 0:
