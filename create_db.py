@@ -7,8 +7,36 @@ from datetime import datetime
 
 def main():
     start_time = datetime.now()
+    input_sequences_list, vsearch_output, curated_vsearch_output, output_directory, output_file, alt_matches_file = set_variables()
+    input_df, input_filename, number_of_sequences_entered = organise_directories(output_directory, input_sequences_list, output_file, vsearch_output)
+    fastaname = prepare_and_run_vsearch(input_df, input_filename, number_of_sequences_entered)
+    processed_vsearch_df, alternative_matches_df, AvA_df = process_vsearch_output(vsearch_output, curated_vsearch_output, input_df)
+    barcoded_df = create_barcodes(processed_vsearch_df)
+    tidy_files(fastaname, vsearch_output, input_sequences_list, barcoded_df, alternative_matches_df, AvA_df, output_file, alt_matches_file, curated_vsearch_output)
+    summary_statement(output_directory, start_time)
+
+##### L1
+def tidy_files(fastaname, vsearch_output, input_sequences_list, barcoded_df, alternative_matches_df, AvA_df, output_file, alt_matches_file, curated_vsearch_output):
+    os.mkdir('data')
+    shutil.move(vsearch_output, 'data')
+    shutil.move(fastaname, 'data')
+    shutil.move(input_sequences_list, 'data')
+    write_csv(barcoded_df, output_file)
+    write_csv(alternative_matches_df, alt_matches_file)
+    shutil.move(alt_matches_file, 'data')
+    write_csv(AvA_df, curated_vsearch_output)
+    shutil.move(curated_vsearch_output, 'data')
+
+##### L1
+def summary_statement(output_directory, start_time):
+    program_length = datetime.now() - start_time
+    print(f'{sys.argv[0]} has completed in {program_length}. {sys.argv[1]} was processed and the Summary.csv file can be '
+          f'found in the new {output_directory} directory.')
+
+##### L1
+def set_variables():
     input_sequences_list = sys.argv[1]
-    # input_sequences_list = 'test50.csv'         # temp line
+    # input_sequences_list = 'test_web.csv'         # temp line
     vsearch_output = 'vsearch_output.csv'
     curated_vsearch_output = 'All_vs_All.csv'
     default_output_directory = input_sequences_list.rstrip('.csv')
@@ -16,8 +44,12 @@ def main():
         output_directory = sys.argv[2]
     else:
         output_directory = default_output_directory
-    output_directory = default_output_directory[:]  # temp line
     output_file = 'Summary_' + output_directory + '.csv'
+    alt_matches_file = 'Alternative_Matches_for_' + output_directory + '.csv'
+    return input_sequences_list, vsearch_output, curated_vsearch_output, output_directory, output_file, alt_matches_file
+
+##### L1
+def organise_directories(output_directory, input_sequences_list, output_file, vsearch_output):
     if os.path.exists(output_directory):    # temp lines for testing
         shutil.rmtree(output_directory)     # temp
         print(f'The previous {output_directory} folder has been deleted')
@@ -25,353 +57,354 @@ def main():
     shutil.copy(input_sequences_list, output_directory)
     # shutil.copy(vsearch_output, output_directory)           # temp line
     os.chdir(output_directory)
-    import_csv(input_sequences_list, output_file)
-    fastaname, input_csv_as_df, length_of_csv = import_csv(input_sequences_list, output_file)
-    for i in range(length_of_csv):
-        convert_input_to_fasta(i, fastaname, input_csv_as_df)
+    input_df, number_of_sequences_entered = import_info(input_sequences_list)
+    check_input(input_df)
+    input_filename = input_sequences_list.rsplit(".", 1)[0]
+    print(f'{input_filename} contains {number_of_sequences_entered} rows and has no missing values.')
+    return input_df, input_filename, number_of_sequences_entered
+
+### L2  # Imports the input as a df, adding a column to show order of entry
+def import_info(input_sequences_list):
+    input_df = read_csv(input_sequences_list)
+    input_df.insert(0, 'Entry Order', range(1, len(input_df) + 1))
+    number_of_sequences_entered = len(input_df)
+    return input_df, number_of_sequences_entered
+
+### L2  # Function that checks the input file for missing sequences
+def check_input(input_df):
+    missing_values = input_df.isnull().sum()
+    if missing_values.sum() > 0:
+        print("The following columns contain missing values:")
+        print(missing_values[missing_values > 0].index.tolist())
+        exit
+    else:
+        return
+
+##### L1
+def prepare_and_run_vsearch(input_df, input_filename, number_of_sequences_entered):
+    fastaname = input_filename + '.fa'
+    for i in range(number_of_sequences_entered):
+        convert_input_to_fasta(i, fastaname, input_df)
     run_vsearch(fastaname)
-    parse_vsearch_allpairsglobal_blast6(vsearch_output, curated_vsearch_output)
-    add_similarity_columns(curated_vsearch_output)
-    create_output_file(output_file, curated_vsearch_output)
-    name_sequences(output_file)
-    join_dataframes(output_file)
-    tidy_files(curated_vsearch_output, fastaname, vsearch_output)
-    # summary_statement(output_directory, start_time)
+    return fastaname
 
-def import_csv(input_sequences_list, output_file):
-    input_csv_as_df = pd.read_csv(input_sequences_list)
-    length_of_csv = len(input_csv_as_df.index.tolist())
-    length_as_list = list(range(length_of_csv))
-    input_list = [x + 1 for x in length_as_list]
-    input_csv_as_df.insert(0, "DB#", input_list)
-    input_csv_as_df.to_csv(output_file, sep=',', index=False)
-    base_name = os.path.splitext(input_sequences_list)[0]
-    fastaname = base_name + '.fa'
-    return fastaname, input_csv_as_df, length_of_csv
-
-def convert_input_to_fasta(i, fastaname, input_csv_as_df):
-    firstline = '>Q' + str(input_csv_as_df['DB#'].values[i]) + " " + str(input_csv_as_df['DB Accession Number'].values[i]) + " " + str(input_csv_as_df['DB Name'].values[i])
-    secondline = str(input_csv_as_df['16S rRNA sequence'].values[i])
+### L2
+def convert_input_to_fasta(i, fastaname, input_df):
+    firstline = '>Q' + str(input_df['Entry Order'].values[i]) + " " + str(input_df['DB Accession Number'].values[i]) + " " + str(input_df['DB Name'].values[i])
+    secondline = str(input_df['16S rRNA sequence'].values[i])
     with open(fastaname, 'a') as f:
         f.write(f"{firstline}\n{secondline}\n")
 
+### L2
 def run_vsearch(fastaname):
     cmd = 'vsearch --allpairs_global ' + fastaname + ' --blast6out vsearch_output.csv --acceptall'
     os.system(cmd)
-    # print('A pre-prepared vsearch output has been used here')       # temp file
+    if "cmd" not in locals():
+        print('A pre-prepared vsearch output has been used here')
 
-def xlookup(lookup_value, lookup_array, return_array, if_not_found: str = ''):
-    match_value = return_array.loc[lookup_array == lookup_value]
-    if match_value.empty:
-        return f'"{lookup_value}" not found!' if if_not_found == '' else if_not_found
+##### L1
+def process_vsearch_output(vsearch_output, curated_vsearch_output, input_df):
+    AvA_df = parse_vsearch_allpairsglobal_blast6(vsearch_output)
+    # write_csv(AvA_df, 'AvA.csv')      # temp line to test 'Alternate Matches'
+    # AvA_df = read_csv('AvA.csv')        # temp line to test 'Alternate Matches'
+    # function that trims the vvsearch df to leave only eligible highest similarity matches for each inputted sequence
+    # Where multiple matches exist all alternates moved to separate df. Lowest alternate input only chosen by default
+    similarity_df, alternative_matches_df = retain_only_highest_similarities(AvA_df)
+    # Detail from input .csv file integrated with vsearch output, ready for program output
+    similarity_df = merge_detail_from_input(similarity_df, input_df)
+    alternative_matches_df = merge_detail_from_input(alternative_matches_df, input_df)
+    # fill in nan values for first DB# which has no comparison sequence as it is first
+    similarity_df.loc[0, ['Similarity(%)', 'Alternative Matches', 'Vs DB#', 'Vs Name', 'Vs ID']] = similarity_df.loc[
+        0, ['Similarity(%)', 'Alternative Matches', 'Vs DB#', 'Vs Name', 'Vs ID']].fillna('N/A')
+    # This line is necessary because merge_detail produces entries for every sequence in the input -
+    # could maybe be removed at some stage if merge_detail is fixed, though I think there is a benefit for similarity_df
+    # Line keeps only those sequences with alternate matches
+    alternative_matches_df = alternative_matches_df[alternative_matches_df['Alternative Matches'] > 0]
+    # produce summary statement - allows visual check of data
+    alternative_matches = alternative_matches_df['DB#'].unique()
+    print(f'{len(similarity_df)} sequences were processed. {len(alternative_matches)} sequences had alternative matches.')
+    return similarity_df, alternative_matches_df, AvA_df
+
+### L2
+def parse_vsearch_allpairsglobal_blast6(vsearch_output):
+    all_vs_all_forward_df = pd.read_csv(vsearch_output, usecols=[0, 1, 2], sep='\t',
+                                        names=["Query Seq", "Target Seq", "Sim to Target"])
+    all_vs_all_df = pd.concat([all_vs_all_forward_df, all_vs_all_forward_df.rename(
+        columns={"Target Seq": "Query Seq", "Query Seq": "Target Seq"})], ignore_index=True)
+    all_vs_all_df.insert(0, "Vsearch Order", np.arange(1, len(all_vs_all_df) + 1), True)
+    all_vs_all_df.insert(4, 'F/R', np.concatenate(
+        [np.array(["F"] * len(all_vs_all_forward_df)), np.array(["R"] * len(all_vs_all_forward_df))]))
+    all_vs_all_df[['Q', 'T']] = all_vs_all_df[['Query Seq', 'Target Seq']].apply(lambda x: x.str[1:].astype(int))
+    all_vs_all_df = all_vs_all_df.sort_values(['Q', 'T'])
+    return all_vs_all_df
+
+### L2
+def retain_only_highest_similarities(curated_df):
+    # curated_df = read_csv('AvA.csv')    # temp line to test 'ALternative Matches'
+    # Only sequences lower in the input order are eligible for comparison - code drops later sequences
+    filtered_df = curated_df[curated_df['Q'] > curated_df['T']]
+    grouped = filtered_df.groupby('Query Seq')
+    filtered_df = filtered_df.copy()
+    # create new column that finds the highest similarity for each group
+    filtered_df['Highest Similarity'] = grouped['Sim to Target'].transform(max)
+    # create new column that indicates which sequences had alternative matching possibilities
+    filtered_df['Alternative Matches'] = filtered_df.apply(lambda row: sum(
+        (row['Highest Similarity'] == filtered_df['Sim to Target']) & (
+                filtered_df['Query Seq'] == row['Query Seq'])) - 1, axis=1)
+    # Only those rows with the highest similarity are kept
+    filtered_df = filtered_df[filtered_df['Sim to Target'] == filtered_df['Highest Similarity']]
+    # a new df containing all sequences with alternative matches is kept
+    alternative_matches_df = filtered_df[filtered_df['Alternative Matches'] > 0]
+    # only the first alternate match is selected (by default the lowest target sequence)
+    filtered_df = filtered_df.groupby('Query Seq').first().reset_index()
+    return filtered_df, alternative_matches_df
+
+### L2
+def merge_detail_from_input(vsearch_df, input_df):
+    vsearch_detail_df = vsearch_df[['Q', 'Sim to Target', 'Alternative Matches', 'T']]
+    input_detail_df = pd.merge(input_df, vsearch_detail_df, left_on='Entry Order', right_on='Q', how='left')
+    versus_df = input_df[['Entry Order', 'DB Name', 'DB Accession Number']]
+    versus_df = versus_df.rename(columns={'Entry Order': 'Vs DB#', 'DB Name': 'Vs Name', 'DB Accession Number': 'Vs ID', 'T': 'Vs DB#'})
+    input_detail_df = pd.merge(input_detail_df, versus_df, left_on='T', right_on='Vs DB#', how='left')
+    input_detail_df = input_detail_df.rename(columns={'Entry Order': 'DB#', 'Sim to Target': 'Similarity(%)'})
+    selected_columns = ['DB#', 'Hun#', 'Fas#', 'DB Accession Number', 'DB Name', 'Similarity(%)',
+                        'Alternative Matches', 'Vs DB#', 'Vs Name', 'Vs ID', 'DB Found', 'Date Accessed',
+                        '16S rRNA sequence']
+    return input_detail_df[selected_columns]
+
+##### L1
+def create_barcodes(processed_vsearch_df):
+    barcode_df = pd.DataFrame({'DB#': [], 'A': [], 'B': [], 'C': [], 'D': [], 'E': [], 'F': [], 'G': [], 'H': [], 'I': [], 'J': [], 'K': [], 'L': [], 'M': [], 'N': [], 'Vs': [], 'Similarity(%)': []})
+    for i in range(len(processed_vsearch_df)):
+        barcode_df = name_each_sequence(processed_vsearch_df, barcode_df, i)
+    result, message = check_barcode_df(processed_vsearch_df, barcode_df)
+    if result:
+        barcoded_df = merge_vsearch_with_barcode(processed_vsearch_df, barcode_df)
+    else:
+        print(message)
+    return barcoded_df
+
+### L2
+def name_each_sequence(input_df, barcode_df, i, A=60, B=70, C=80, D=85, E=90, F=95, G=98, H=99, I=99.5, J=99.6, K=99.7, L=99.8, M=99.9, N=100):
+    row = i + 1
+    if row == 1:
+        barcode_df = pd.DataFrame({'DB#': [row], 'A': [0], 'B': [0], 'C': [0], 'D': [0],
+                                   'E': [0], 'F': [0], 'G': [0], 'H': [0], 'I': [0], 'J': [0],
+                                   'K': [0], 'L': [0], 'M': [0], 'N': [0], 'Vs': ['N/A'], 'Similarity(%)': ['N/A']})
 
     else:
-        return match_value.tolist()[0]
+        matched_df = input_df.loc[input_df['DB#'] == row]
+        closest_current_sequence = int(matched_df['Vs DB#'].values[0])
+        similarity_to_closest_sequence = float(matched_df['Similarity(%)'].values[0])
 
-def parse_vsearch_allpairsglobal_blast6(vsearch_output, curated_vsearch_output):
-    query_vs_query_forward_df = pd.read_csv(vsearch_output, usecols=[0, 1, 2], sep='\t',
-                                            names=["Query Seq", "Target Seq", "Sim to Target"])
-    query_vs_query_reverse_df = query_vs_query_forward_df[:]
-    query_vs_query_reverse_df = query_vs_query_reverse_df[query_vs_query_reverse_df.columns[[1, 0, 2]]]
-    query_vs_query_reverse_df = query_vs_query_reverse_df.rename(
-        columns={'Target Seq': 'Query Seq', 'Query Seq': 'Target Seq'})
-    df_length = len(query_vs_query_forward_df)
-    vsearch_output_order_forward = pd.Series(np.arange(1, df_length + 1, 1))
-    vsearch_output_order_reverse = pd.Series(np.arange(df_length + 1, df_length * 2 + 1, 1))
-    query_vs_query_forward_df.insert(0, "Vsearch Order", vsearch_output_order_forward, True)
-    query_vs_query_reverse_df.insert(0, "Vsearch Order", vsearch_output_order_reverse, True)
-    query_vs_query_forward_df.insert(4, 'F/R', 'F', True)
-    query_vs_query_reverse_df.insert(4, 'F/R', 'R', True)
-    query_vs_query_df = pd.concat([query_vs_query_forward_df, query_vs_query_reverse_df], ignore_index=True, axis=0)
-    query_vs_query_df['Q'] = query_vs_query_df['Query Seq'].str[1:].astype(int)
-    query_vs_query_df['T'] = query_vs_query_df['Target Seq'].str[1:].astype(int)
-    query_vs_query_df.loc[-1] = [0, 0, 0, 40, 0, 1, 0]
-    query_vs_query_df = query_vs_query_df.sort_values(['Q', 'T'])
-    query_vs_query_df.to_csv(curated_vsearch_output, sep=',', index=False)
+        Ai = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'A'].values[0])
+        Bi = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'B'].values[0])
+        Ci = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'C'].values[0])
+        Di = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'D'].values[0])
+        Ei = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'E'].values[0])
+        Fi = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'F'].values[0])
+        Gi = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'G'].values[0])
+        Hi = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'H'].values[0])
+        Ii = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'I'].values[0])
+        Ji = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'J'].values[0])
+        Ki = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'K'].values[0])
+        Li = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'L'].values[0])
+        Mi = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'M'].values[0])
+        Ni = int(barcode_df.loc[barcode_df['DB#'] == closest_current_sequence, 'N'].values[0])
 
-def add_similarity_columns(curated_vsearch_output):
-    curated_vsearch_output = pd.read_csv('All_vs_All.csv')
-
-    def find_highest_similarity_for_query(input):
-        selected_df = curated_vsearch_output[:]
-        selected_df = selected_df.loc[selected_df['Q'] == input]
-        selected_df = selected_df[selected_df['Q'] >= selected_df['T']]
-        match_row = selected_df.loc[selected_df['Sim to Target'].idxmax()]
-        highest_similarity = float(match_row['Sim to Target'])
-        return highest_similarity
-
-    def id_highest_similarity(input):
-        selected_df = curated_vsearch_output[:]
-        selected_df = selected_df.loc[selected_df['Q'] == input]
-        selected_df = selected_df[selected_df['Q'] >= selected_df['T']]
-        match_row = selected_df.loc[selected_df['Sim to Target'].idxmax()]
-        closest_match = match_row['T']
-        return closest_match
-
-    def number_of_equal_highest_similarities(input):
-        selected_df = curated_vsearch_output[:]
-        selected_df = selected_df.loc[selected_df['Query Seq'] == input]
-        match_row = selected_df.loc[selected_df['Sim to Target'].idxmax()]
-        highest_similarity = float(match_row['Sim to Target'])
-        number_of_equals = (selected_df['Sim to Target'].values == highest_similarity).sum()
-        return number_of_equals
-
-    curated_vsearch_output['Highest Sim to Target'] = curated_vsearch_output['Q'].apply(find_highest_similarity_for_query)
-    curated_vsearch_output['Closest Match'] = curated_vsearch_output['Q'].apply(id_highest_similarity)
-    curated_vsearch_output['Alternative Matches'] = curated_vsearch_output['Query Seq'].apply(number_of_equal_highest_similarities) - 1
-    curated_vsearch_output = curated_vsearch_output.loc[:, ['Vsearch Order', 'Query Seq', 'Target Seq', 'Sim to Target', 'F/R', 'Highest Sim to Target', 'Closest Match', 'Alternative Matches', 'Q', 'T']]
-    curated_vsearch_output.to_csv('All_vs_All.csv', sep=',', index=False)
-
-def create_output_file(output_file, curated_vsearch_output):
-    update_df = pd.read_csv(output_file)
-    lookup_df = pd.read_csv(curated_vsearch_output)
-    lookup_df = lookup_df.drop_duplicates(subset=['Q'])
-    lookup_df = lookup_df.reset_index(drop=True)
-    update_df['Closest Match'] = update_df['DB#'].map(lookup_df.set_index('Q')['Closest Match'])
-    update_df['Similarity %'] = update_df['DB#'].map(lookup_df.set_index('Q')['Highest Sim to Target'])
-    update_df['Alternative Matches'] = update_df['DB#'].map(lookup_df.set_index('Q')['Alternative Matches'])
-    # update_df['Match DB#'] = update_df['Closest Match']
-    update_df['Match DB#'] = update_df['Closest Match']
-    update_df['Vs Name'] = update_df['Match DB#'].map(update_df.set_index('DB#')['DB Name'])
-    update_df['Vs ID'] = update_df['Match DB#'].map(update_df.set_index('DB#')['DB Accession Number'])
-
-
-    # update_df['Vs Name'] = update_df['Match DB#'].apply(xlookup, args=(
-    #     update_df['DB#'], update_df['DB Name']))
-    # update_df['Vs ID'] = update_df['Match DB#'].apply(xlookup, args=(
-    #     update_df['DB#'], update_df['DB Accession Number']))
-    update_df['Vs DB#'] = update_df['Match DB#'].apply(xlookup, args=(
-        update_df['DB#'], update_df['DB#']))
-
-    # update_df['Vs Name'] = update_df['Match DB#'].map(update_df.set_index('DB#')['DB Name'])
-    # update_df['Vs ID'] = update_df['Match DB#'].map(update_df.set_index('DB#')['DB Accession Number'])
-    # update_df['Vs DB#'] = update_df['Match DB#'].map(update_df.set_index('DB#')['DB#'])
-
-
-    # update_df['Vs Name'] = update_df['Match DB#'].apply(xlookup, args=(
-    #     update_df['DB#'], update_df['DB Name']))
-    # update_df['Vs ID'] = update_df['Match DB#'].apply(xlookup, args=(
-    #     update_df['DB#'], update_df['DB Accession Number']))
-    # update_df['Vs DB#'] = update_df['Match DB#'].apply(xlookup, args=(
-    #     update_df['DB#'], update_df['DB#']))
-    # update_df = update_df.iloc[:, [0, 1, 2, 5, 4, 13, 12, 9, 10, 3, 7]]
-    update_df = update_df.iloc[:, [0, 1, 2, 5, 4, 14, 12, 9, 10, 13, 3, 7]]
-    update_df.to_csv(output_file, sep=',', index=False)
-
-def name_sequences(output_file):
-    input_df = pd.read_csv(output_file)
-    d1, d2, d3 = {'Entry': [0], 'Db Species Name': ['Template'], 'A': [-1]}, dict.fromkeys('BCDEFGHIJKLMN', [0]), {
-        'Vs': [0], 'Similarity': [0], 'DB': 'Silva', 'Accession No.': [0], '16S rRNA sequence': ['AAAAAGGGG']}
-    naming_df = pd.DataFrame(dict(d1, **d2, **d3))
-    naming_df.to_csv("Naming_dataframe.csv", sep=',', index=False)
-    length_of_run = len(input_df.index.tolist())
-    for i in range(length_of_run):
-        name_each_sequence(input_df, i)
-
-def name_each_sequence(input_df, i):
-    naming_df = pd.read_csv("Naming_dataframe.csv")
-    comparison_row = i
-    max_entry = max(naming_df['Entry'].values)
-    new_entry = max_entry + 1
-    species_name = input_df['DB Name'].values[comparison_row]
-    db_found = input_df['DB Found'].values[comparison_row]
-    input_db_accession_number = input_df['DB Accession Number'].values[comparison_row]
-    # date_accessed = input_df['Date Accessed'].values[comparison_row]
-    sequence = input_df['16S rRNA sequence'].values[comparison_row]
-    input_id = int(input_df['DB#'].values[comparison_row])
-    matched_similarity_df = pd.read_csv("All_vs_All.csv")
-    matched_similarity_df = matched_similarity_df.loc[matched_similarity_df['Q'] == input_id]
-    matched_similarity_single_row_only = matched_similarity_df.values[0]
-    closest_current_sequence = matched_similarity_single_row_only[6]
-    similarity_to_closest_sequence = matched_similarity_single_row_only[5]
-
-
-    Ai, Bi, Ci, Di, Ei, Fi, Gi, Hi, Ii, Ji, Ki, Li, Mi, Ni = int(naming_df['A'].values[closest_current_sequence]), int(
-        naming_df['B'].values[closest_current_sequence]), int(naming_df['C'].values[closest_current_sequence]), int(
-        naming_df['D'].values[closest_current_sequence]), int(naming_df['E'].values[closest_current_sequence]), int(
-        naming_df['F'].values[closest_current_sequence]), int(naming_df['G'].values[closest_current_sequence]), int(
-        naming_df['H'].values[closest_current_sequence]), int(naming_df['I'].values[closest_current_sequence]), int(
-        naming_df['J'].values[closest_current_sequence]), int(naming_df['K'].values[closest_current_sequence]), int(
-        naming_df['L'].values[closest_current_sequence]), int(naming_df['M'].values[closest_current_sequence]), int(
-        naming_df['N'].values[closest_current_sequence])
-    A, B, C, D, E, F, G, H, I, J, K, L, M, N = 60, 70, 80, 85, 90, 95, 98, 99, 99.5, 99.6, 99.7, 99.8, 99.9, 100
-
-    if similarity_to_closest_sequence < A:
-        Ao = int(max(naming_df['A'].values)) + 1
-        Bo = Co = Do = Eo = Fo = Go = Ho = Io = Jo = Ko = Lo = Mo = No = 0
-    else:
-        Ao = Ai
-        if similarity_to_closest_sequence < B:
-            df_b = naming_df[naming_df['A'] == Ai]
-            Bo = int(max(df_b['B'].values)) + 1
-            Co = Do = Eo = Fo = Go = Ho = Io = Jo = Ko = Lo = Mo = No = 0
+        if similarity_to_closest_sequence < A:
+            Ao = int(max(barcode_df['A'].values)) + 1
+            Bo = Co = Do = Eo = Fo = Go = Ho = Io = Jo = Ko = Lo = Mo = No = 0
         else:
-            Bo = Bi
-            if similarity_to_closest_sequence < C:
-                df_c = naming_df[(naming_df['A'] == Ai) & (naming_df['B'] == Bi)]
-                Co = int(max(df_c['C'].values)) + 1
-                Do = Eo = Fo = Go = Ho = Io = Jo = Ko = Lo = Mo = No = 0
+            Ao = Ai
+            if similarity_to_closest_sequence < B:
+                df_b = barcode_df[barcode_df['A'] == Ai]
+                Bo = int(max(df_b['B'].values)) + 1
+                Co = Do = Eo = Fo = Go = Ho = Io = Jo = Ko = Lo = Mo = No = 0
             else:
-                Co = Ci
-                if similarity_to_closest_sequence < D:
-                    df_d = naming_df[(naming_df['A'] == Ai) & (naming_df['B'] == Bi) & (naming_df['C'] == Ci)]
-                    Do = int(max(df_d['D'].values)) + 1
-                    Eo = Fo = Go = Ho = Io = Jo = Ko = Lo = Mo = No = 0
+                Bo = Bi
+                if similarity_to_closest_sequence < C:
+                    df_c = barcode_df[(barcode_df['A'] == Ai) & (barcode_df['B'] == Bi)]
+                    Co = int(max(df_c['C'].values)) + 1
+                    Do = Eo = Fo = Go = Ho = Io = Jo = Ko = Lo = Mo = No = 0
                 else:
-                    Do = Di
-                    if similarity_to_closest_sequence < E:
-                        df_e = naming_df[(naming_df['A'] == Ai) & (naming_df['B'] == Bi) & (naming_df['C'] == Ci) & (
-                                    naming_df['D'] == Di)]
-                        Eo = int(max(df_e['E'].values)) + 1
-                        Fo = Go = Ho = Io = Jo = Ko = Lo = Mo = No = 0
+                    Co = Ci
+                    if similarity_to_closest_sequence < D:
+                        df_d = barcode_df[(barcode_df['A'] == Ai) & (barcode_df['B'] == Bi) & (barcode_df['C'] == Ci)]
+                        Do = int(max(df_d['D'].values)) + 1
+                        Eo = Fo = Go = Ho = Io = Jo = Ko = Lo = Mo = No = 0
                     else:
-                        Eo = Ei
-                        if similarity_to_closest_sequence < F:
-                            df_f = naming_df[(naming_df['A'] == Ai) & (naming_df['B'] == Bi) & (naming_df['C'] == Ci) &
-                                        (naming_df['D'] == Di) & (naming_df['E'] == Ei)]
-                            Fo = int(max(df_f['F'].values)) + 1
-                            Go = Ho = Io = Jo = Ko = Lo = Mo = No = 0
+                        Do = Di
+                        if similarity_to_closest_sequence < E:
+                            df_e = barcode_df[
+                                (barcode_df['A'] == Ai) & (barcode_df['B'] == Bi) & (barcode_df['C'] == Ci) & (
+                                            barcode_df['D'] == Di)]
+                            Eo = int(max(df_e['E'].values)) + 1
+                            Fo = Go = Ho = Io = Jo = Ko = Lo = Mo = No = 0
                         else:
-                            Fo = Fi
-                            if similarity_to_closest_sequence < G:
-                                df_g = naming_df[
-                                    (naming_df['A'] == Ai) & (naming_df['B'] == Bi) & (naming_df['C'] == Ci) & (
-                                                naming_df['D'] == Di) & (naming_df['E'] == Ei) & (naming_df['F'] == Fi)]
-                                Go = int(max(df_g['G'].values)) + 1
-                                Ho = Io = Jo = Ko = Lo = Mo = No = 0
+                            Eo = Ei
+                            if similarity_to_closest_sequence < F:
+                                df_f = barcode_df[
+                                    (barcode_df['A'] == Ai) & (barcode_df['B'] == Bi) & (barcode_df['C'] == Ci) & (
+                                                barcode_df['D'] == Di) & (barcode_df['E'] == Ei)]
+                                Fo = int(max(df_f['F'].values)) + 1
+                                Go = Ho = Io = Jo = Ko = Lo = Mo = No = 0
                             else:
-                                Go = Gi
-                                if similarity_to_closest_sequence < H:
-                                    df_h = naming_df[
-                                        (naming_df['A'] == Ai) & (naming_df['B'] == Bi) & (naming_df['C'] == Ci) & (
-                                                    naming_df['D'] == Di) & (naming_df['E'] == Ei) & (
-                                                    naming_df['F'] == Fi) & (naming_df['G'] == Gi)]
-                                    Ho = int(max(df_h['H'].values)) + 1
-                                    Io = Jo = Ko = Lo = Mo = No = 0
+                                Fo = Fi
+                                if similarity_to_closest_sequence < G:
+                                    df_g = barcode_df[
+                                        (barcode_df['A'] == Ai) & (barcode_df['B'] == Bi) & (barcode_df['C'] == Ci) & (
+                                                barcode_df['D'] == Di) & (barcode_df['E'] == Ei) & (
+                                                barcode_df['F'] == Fi)]
+                                    Go = int(max(df_g['G'].values)) + 1
+                                    Ho = Io = Jo = Ko = Lo = Mo = No = 0
                                 else:
-                                    Ho = Hi
-                                    if similarity_to_closest_sequence < I:
-                                        df_i = naming_df[
-                                            (naming_df['A'] == Ai) & (naming_df['B'] == Bi) & (naming_df['C'] == Ci) & (
-                                                        naming_df['D'] == Di) & (naming_df['E'] == Ei) & (
-                                                        naming_df['F'] == Fi) & (naming_df['G'] == Gi) & (
-                                                        naming_df['H'] == Hi)]
-                                        Io = int(max(df_i['I'].values)) + 1
-                                        Jo = Ko = Lo = Mo = No = 0
+                                    Go = Gi
+                                    if similarity_to_closest_sequence < H:
+                                        df_h = barcode_df[(barcode_df['A'] == Ai) & (barcode_df['B'] == Bi) & (
+                                                    barcode_df['C'] == Ci) & (barcode_df['D'] == Di) & (
+                                                                      barcode_df['E'] == Ei) & (
+                                                                      barcode_df['F'] == Fi) & (
+                                                                      barcode_df['G'] == Gi)]
+                                        Ho = int(max(df_h['H'].values)) + 1
+                                        Io = Jo = Ko = Lo = Mo = No = 0
                                     else:
-                                        Io = Ii
-                                        if similarity_to_closest_sequence < J:
-                                            df_j = naming_df[
-                                                (naming_df['A'] == Ai) & (naming_df['B'] == Bi) & (naming_df['C'] == Ci) & (
-                                                            naming_df['D'] == Di) & (naming_df['E'] == Ei) & (
-                                                            naming_df['F'] == Fi) & (naming_df['G'] == Gi) & (
-                                                            naming_df['H'] == Hi) & (naming_df['I'] == Ii)]
-                                            Jo = int(max(df_j['J'].values)) + 1
-                                            Ko = Lo = Mo = No = 0
+                                        Ho = Hi
+                                        if similarity_to_closest_sequence < I:
+                                            df_i = barcode_df[
+                                                (barcode_df['A'] == Ai) & (barcode_df['B'] == Bi) & (
+                                                            barcode_df['C'] == Ci) & (barcode_df['D'] == Di) & (
+                                                            barcode_df['E'] == Ei) & (barcode_df['F'] == Fi) & (
+                                                            barcode_df['G'] == Gi) & (barcode_df['H'] == Hi)]
+                                            Io = int(max(df_i['I'].values)) + 1
+                                            Jo = Ko = Lo = Mo = No = 0
                                         else:
-                                            Jo = Ji
-                                            if similarity_to_closest_sequence < K:
-                                                df_k = naming_df[(naming_df['A'] == Ai) & (naming_df['B'] == Bi) & (
-                                                            naming_df['C'] == Ci) & (naming_df['D'] == Di) & (
-                                                                             naming_df['E'] == Ei) & (
-                                                                             naming_df['F'] == Fi) & (
-                                                                             naming_df['G'] == Gi) & (
-                                                                             naming_df['H'] == Hi) & (
-                                                                             naming_df['I'] == Ii) & (naming_df['J'] == Ji)]
-                                                Ko = int(max(df_k['K'].values)) + 1
-                                                Lo = Mo = No = 0
+                                            Io = Ii
+                                            if similarity_to_closest_sequence < J:
+                                                df_j = barcode_df[(barcode_df['A'] == Ai) & (barcode_df['B'] == Bi) & (
+                                                            barcode_df['C'] == Ci) & (barcode_df['D'] == Di) & (
+                                                                              barcode_df['E'] == Ei) & (
+                                                                              barcode_df['F'] == Fi) & (
+                                                                              barcode_df['G'] == Gi) & (
+                                                                              barcode_df['H'] == Hi)]
+                                                Jo = int(max(df_j['J'].values)) + 1
+                                                Ko = Lo = Mo = No = 0
                                             else:
-                                                Ko = Ki
-                                                if similarity_to_closest_sequence < L:
-                                                    df_l = naming_df[(naming_df['A'] == Ai) & (naming_df['B'] == Bi) & (
-                                                                naming_df['C'] == Ci) & (naming_df['D'] == Di) & (
-                                                                                 naming_df['E'] == Ei) & (
-                                                                                 naming_df['F'] == Fi) & (
-                                                                                 naming_df['G'] == Gi) & (
-                                                                                 naming_df['H'] == Hi) & (
-                                                                                 naming_df['I'] == Ii) & (
-                                                                                 naming_df['J'] == Ji) & (
-                                                                                 naming_df['K'] == Ki)]
-                                                    Lo = int(max(df_l['L'].values)) + 1
-                                                    Mo = No = 0
+                                                Jo = Ji
+                                                if similarity_to_closest_sequence < K:
+                                                    df_k = barcode_df[
+                                                        (barcode_df['A'] == Ai) & (barcode_df['B'] == Bi) & (
+                                                                    barcode_df['C'] == Ci) & (barcode_df['D'] == Di) & (
+                                                                    barcode_df['E'] == Ei) & (barcode_df['F'] == Fi) & (
+                                                                    barcode_df['G'] == Gi) & (barcode_df['H'] == Hi) & (
+                                                                    barcode_df['I'] == Ii)]
+                                                    Ko = int(max(df_k['K'].values)) + 1
+                                                    Lo = Mo = No = 0
                                                 else:
-                                                    Lo = Li
-                                                    if similarity_to_closest_sequence < M:
-                                                        df_m = naming_df[(naming_df['A'] == Ai) & (naming_df['B'] == Bi) & (
-                                                                    naming_df['C'] == Ci) & (naming_df['D'] == Di) & (
-                                                                                     naming_df['E'] == Ei) & (
-                                                                                     naming_df['F'] == Fi) & (
-                                                                                     naming_df['G'] == Gi) & (
-                                                                                     naming_df['H'] == Hi) & (
-                                                                                     naming_df['I'] == Ii) & (
-                                                                                     naming_df['J'] == Ji) & (
-                                                                                     naming_df['K'] == Ki) & (
-                                                                                     naming_df['L'] == Li)]
-                                                        Mo = int(max(df_m['M'].values)) + 1
-                                                        No = 0
+                                                    Ko = Ki
+                                                    if similarity_to_closest_sequence < L:
+                                                        df_l = barcode_df[
+                                                            (barcode_df['A'] == Ai) & (barcode_df['B'] == Bi) & (
+                                                                        barcode_df['C'] == Ci) & (
+                                                                        barcode_df['D'] == Di) & (
+                                                                        barcode_df['E'] == Ei) & (
+                                                                        barcode_df['F'] == Fi) & (
+                                                                        barcode_df['G'] == Gi) & (
+                                                                        barcode_df['H'] == Hi) & (
+                                                                        barcode_df['I'] == Ii) & (
+                                                                        barcode_df['J'] == Ji)]
+                                                        Lo = int(max(df_l['L'].values)) + 1
+                                                        Mo = No = 0
                                                     else:
-                                                        Mo = Mi
-                                                        if similarity_to_closest_sequence < N:
-                                                            df_n = naming_df[
-                                                                (naming_df['A'] == Ai) & (naming_df['B'] == Bi) & (
-                                                                            naming_df['C'] == Ci) & (
-                                                                            naming_df['D'] == Di) & (
-                                                                            naming_df['E'] == Ei) & (
-                                                                            naming_df['F'] == Fi) & (
-                                                                            naming_df['G'] == Gi) & (
-                                                                            naming_df['H'] == Hi) & (
-                                                                            naming_df['I'] == Ii) & (
-                                                                            naming_df['J'] == Ji) & (
-                                                                            naming_df['K'] == Ki) & (
-                                                                            naming_df['L'] == Li) & (naming_df['M'] == Mi)]
-                                                            No = int(max(df_n['N'].values)) + 1
+                                                        Lo = Li
+                                                        if similarity_to_closest_sequence < M:
+                                                            df_m = barcode_df[
+                                                                (barcode_df['A'] == Ai) & (barcode_df['B'] == Bi) & (
+                                                                            barcode_df['C'] == Ci) & (
+                                                                            barcode_df['D'] == Di) & (
+                                                                            barcode_df['E'] == Ei) & (
+                                                                            barcode_df['F'] == Fi) & (
+                                                                            barcode_df['G'] == Gi) & (
+                                                                            barcode_df['H'] == Hi) & (
+                                                                            barcode_df['I'] == Ii) & (
+                                                                            barcode_df['J'] == Ji) & (
+                                                                            barcode_df['K'] == Ki)]
+                                                            Mo = int(max(df_m['M'].values)) + 1
+                                                            No = 0
                                                         else:
-                                                            No = Ni
+                                                            Mo = Mi
+                                                            if similarity_to_closest_sequence < N:
+                                                                df_m = barcode_df[(barcode_df['A'] == Ai) & (
+                                                                            barcode_df['B'] == Bi) & (
+                                                                                              barcode_df['C'] == Ci) & (
+                                                                                              barcode_df['D'] == Di) & (
+                                                                                              barcode_df['E'] == Ei) & (
+                                                                                              barcode_df['F'] == Fi) & (
+                                                                                              barcode_df['G'] == Gi) & (
+                                                                                              barcode_df['H'] == Hi) & (
+                                                                                              barcode_df['I'] == Ii) & (
+                                                                                              barcode_df['J'] == Ji) & (
+                                                                                              barcode_df['K'] == Ki) & (
+                                                                                              barcode_df['L'] == Li)]
+                                                                No = int(max(df_m['N'].values)) + 1
+                                                            else:
+                                                                No = Ni
 
-    # new_line = {'Entry': [new_entry],'Db Species Name': [species_name], 'A': [Ao], 'B': [Bo], 'C': [Co], 'D': [Do], 'E': [Eo], 'F': [Fo], 'G': [Go], 'H': [Ho], 'I': [Io], 'J': [Jo], 'K': [Ko], 'L': [Lo], 'M': [Mo], 'N': [No], 'Vs': [closest_current_sequence], 'Similarity': [similarity_to_closest_sequence], 'DB': [db_found], 'Accession No.': [input_db_accession_number], 'Hun#': [additional_ordering_one], 'Fas#': [additional_ordering_two], '16S rRNA sequence': [sequence] }
-    new_line = {'Entry': [new_entry], 'Db Species Name': [species_name], 'A': [Ao], 'B': [Bo], 'C': [Co], 'D': [Do],
-                'E': [Eo], 'F': [Fo], 'G': [Go], 'H': [Ho], 'I': [Io], 'J': [Jo], 'K': [Ko], 'L': [Lo], 'M': [Mo],
-                'N': [No], 'Vs': [closest_current_sequence], 'Similarity': [similarity_to_closest_sequence],
-                'DB': [db_found], 'Accession No.': [input_db_accession_number], '16S rRNA sequence': [sequence]}
-    new_line_df = pd.DataFrame(new_line)
-    naming_df = pd.concat([naming_df, new_line_df], ignore_index=True, axis=0)
-    naming_df.to_csv("Naming_dataframe.csv", sep=',', index=False)
 
-def join_dataframes(output_file):
-    input_df = pd.read_csv(output_file)
-    name_df = pd.read_csv('Naming_dataframe.csv')
-    name_df = name_df.drop(0).reset_index(drop=True)
+        new_line = {'DB#': [row], 'A': [Ao], 'B': [Bo], 'C': [Co], 'D': [Do], 'E': [Eo], 'F': [Fo], 'G': [Go], 'H': [Ho],
+                    'I': [Io], 'J': [Jo], 'K': [Ko], 'L': [Lo], 'M': [Mo], 'N': [No],
+                    'Vs': [closest_current_sequence], 'Similarity(%)': [similarity_to_closest_sequence]}
+        new_line_df = pd.DataFrame(new_line)
+        barcode_df = pd.concat([barcode_df, new_line_df], ignore_index=True, axis=0)
+    return barcode_df
 
-    columns_to_be_inserted = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
-    insert = name_df.loc[:, columns_to_be_inserted]
-    output_df = pd.concat([input_df, insert], 1)
-    # output_df = output_df.iloc[:, [0, 1, 2, 4, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 5, 6, 7, 8, 3, 9, 10]]
-    output_df = output_df.iloc[:, [0, 1, 2, 4, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 5, 6, 7, 8, 9, 3, 10, 11]]
+### L2
+def check_barcode_df(processed_vsearch_df, barcode_df):
+    # Check for unique values in 'DB#' column
+    if processed_vsearch_df['DB#'].nunique() != processed_vsearch_df.shape[0]:
+        return False, "processed_vsearch_df has duplicate values in 'DB#' column"
+    if barcode_df['DB#'].nunique() != barcode_df.shape[0]:
+        return False, "barcode_df has duplicate values in 'DB#' column"
 
-    output_df.loc[0, 'Vs ID'] = 'N/A'
-    output_df.loc[0, 'Vs Name'] = 'N/A'
-    output_df.loc[0, 'Similarity %'] = 'N/A'
-    output_df.loc[0, 'Vs DB#'] = 'N/A'
-    output_df.loc[0, 'Alternative Matches'] = 0
+    # Check for same unique values in 'DB#' column
+    if set(processed_vsearch_df['DB#'].unique()) != set(barcode_df['DB#'].unique()):
+        return False, "processed_vsearch_df and barcode_df have different values in 'DB#' column"
 
-    output_df = output_df.sort_values(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N'])
-    length_of_output_df = len(output_df.index.tolist())
-    length_as_list = list(range(length_of_output_df))
-    input_list = [x + 1 for x in length_as_list]
-    output_df.insert(3, "Tree#", input_list)
-    output_df.to_csv(output_file, sep=',', index=False)
+    # Check for same values in 'Similarity(%)' column
+    for db_num in processed_vsearch_df['DB#'].unique():
+        processed_similarity = processed_vsearch_df.loc[processed_vsearch_df['DB#'] == db_num, 'Similarity(%)'].iloc[0]
+        barcode_similarity = barcode_df.loc[barcode_df['DB#'] == db_num, 'Similarity(%)'].iloc[0]
+        if processed_similarity != barcode_similarity:
+            return False, f"processed_vsearch_df and barcode_df have different values in 'Similarity(%)' for DB# {db_num}"
 
-def tidy_files(curated_vsearch_output, fastaname, vsearch_output):
-    os.mkdir('data')
-    shutil.move(curated_vsearch_output, 'data')
-    shutil.move(vsearch_output, 'data')
-    shutil.move('Naming_dataframe.csv', 'data')
-    shutil.move(fastaname, 'data')
+    return True, print("All checks passed meaning barcodes can be attached.")
 
-def summary_statement(output_directory, start_time):
-    program_length = datetime.now() - start_time
-    print(f'{sys.argv[0]} has completed in {program_length}. {sys.argv[1]} was processed and the Summary.csv file can be '
-          f'found in the new {output_directory} directory.')
+### L2
+def merge_vsearch_with_barcode(processed_vsearch_df, barcode_df):
+    barcode_df = barcode_df.drop(columns=['Similarity(%)', 'Vs'])
+    merged_df = pd.merge(processed_vsearch_df, barcode_df, on='DB#', how='left')
+    cols = ['DB#', 'Hun#', 'Fas#', 'DB Accession Number', 'DB Name', 'Alternative Matches',  'Similarity(%)', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'Vs DB#', 'Vs Name', 'Vs ID', 'DB Found', 'Date Accessed', '16S rRNA sequence']
+    return merged_df[cols]
+    # return merged_df
+
+
+
+def read_csv(filename):
+    try:
+        df = pd.read_csv(filename)
+        return df
+    except FileNotFoundError:
+        print("The file '{}' could not be found. Make sure the file is in the correct location and try again.".format(filename))
+        exit()
+    except pd.errors.EmptyDataError:
+        print("The file '{}' is empty. Make sure the file contains data and try again.".format(filename))
+        exit()
+    except:
+        print("An unknown error occurred while trying to read the file '{}'.".format(filename))
+        exit()
+
+def write_csv(df, filename):
+    df.to_csv(filename, sep=',', index=False)
 
 main()
 print('finished')
