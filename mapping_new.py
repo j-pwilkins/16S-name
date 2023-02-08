@@ -27,10 +27,10 @@ def summary_statement(length_of_output, start_time):
 
 ##### L1
 def read_inputs():
-    input_sequences_list = sys.argv[1]
-    # input_sequences_list = 'V1V3.csv'
-    input_database = sys.argv[2]
-    # input_database = 'db_497.csv'
+    # input_sequences_list = sys.argv[1]
+    input_sequences_list = 'V3V4.csv'
+    # input_database = sys.argv[2]
+    input_database = 'db_497.csv'
     vsearch_output = 'vsearch_blast6_output.csv'
     curated_vsearch_output = 'Query_vs_All.csv'
     text_insert = '_vs_'
@@ -53,7 +53,7 @@ def organise_directories(output_directory, input_sequences_list, input_database,
     os.makedirs(output_directory, exist_ok=True)
     shutil.copy(input_sequences_list, output_directory)
     shutil.copy(input_database, output_directory)
-    # shutil.copy(vsearch_output, output_directory)  # temp file until in Kelvin
+    shutil.copy(vsearch_output, output_directory)  # temp file until in Kelvin
     os.chdir(output_directory)
 
 ##### L1 # Read in .csv files, create fasta, run vsearch
@@ -64,7 +64,7 @@ def prepare_then_run_vsearch(input_sequences_list, input_database, vsearch_outpu
         convert_query_to_fasta(query_df, query_fastaname, i)
     for i in range(length_of_database):
         convert_db_to_fasta(database_df, database_fastaname, i)
-    run_vsearch(query_fastaname, database_fastaname, vsearch_output)
+    # run_vsearch(query_fastaname, database_fastaname, vsearch_output)
     return database_df, query_df, length_of_query, query_fastaname, database_fastaname
 
 ### L2
