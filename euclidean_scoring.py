@@ -30,10 +30,10 @@ def score_sequences_ordinal(scoring_df):
     groups = scoring_df.groupby('DB/Query #')
     scoring_cols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
     for name, group in groups:
-        ref_row = group.loc[group['Selected'] == '16S']
+        ref_row = group.loc[group['Selected'] == 'DB']
         ref_values = ref_row[scoring_cols].values[0]
         for i, row in group.iterrows():
-            if row['Selected'] != '16S':
+            if row['Selected'] != 'DB':
                 for j, col in enumerate(scoring_cols):
                     if row[col] != ref_values[j]:
                         scoring_df.at[i, 'Ordinal Scoring'] = str(j+1)
