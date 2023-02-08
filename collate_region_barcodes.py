@@ -59,8 +59,8 @@ def format_combined_df(combined_df):
                                                                       np.where(combined_df['Region'] == 'V4', 5, 'NA')))))
     combined_df['Tree Order'] = combined_df['Tree#']
     # combined_df = combined_df.sort_values(by=['Query#', 'Tree Order', 'Region Order', 'Selected Order', 'ID Order'], ascending=[True, True, True, True, True])
-    combined_df = combined_df.sort_values(by=['Query#', 'Tree Order', 'Region Order', 'Selected Order'],
-                                          ascending=[True, True, True, True])
+    combined_df = combined_df.sort_values(by=['Tree Order', 'Region Order', 'Selected Order'],
+                                          ascending=[True, True, True])
     combined_df['JP Order'] = np.arange(1, len(combined_df) + 1)
     return combined_df
 
