@@ -180,6 +180,7 @@ def create_barcodes(processed_vsearch_df):
     result, message = check_barcode_df(processed_vsearch_df, barcode_df)
     if result:
         barcoded_df = merge_vsearch_with_barcode(processed_vsearch_df, barcode_df)
+        barcoded_df = add_tree_order_column(barcoded_df)
     else:
         print(message)
     return barcoded_df
@@ -385,8 +386,16 @@ def merge_vsearch_with_barcode(processed_vsearch_df, barcode_df):
     merged_df = pd.merge(processed_vsearch_df, barcode_df, on='DB#', how='left')
     cols = ['DB#', 'Hun#', 'Fas#', 'DB Accession Number', 'DB Name', 'Alternative Matches',  'Similarity(%)', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'Vs DB#', 'Vs Name', 'Vs ID', 'DB Found', 'Date Accessed', '16S rRNA sequence']
     return merged_df[cols]
-    # return merged_df
 
+def add_tree_order_column(barcoded_df):
+    columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
+    # sort the df rows using the barcode columns, from right to left
+    barcoded_df.sort_values(by=columns, axis=0, ascending=True, inplace=True)
+    # insert a new column with the Tree Order so that it can be selected by user
+    barcoded_df.insert(3, 'Tree#', range(1, len(barcoded_df) + 1))
+    # order df so that it will be returned in same order as it came in
+    barcoded_df.sort_values(by='DB#', axis=0, ascending=True, inplace=True)
+    return barcoded_df
 
 
 def read_csv(filename):
