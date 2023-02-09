@@ -6,69 +6,84 @@ pd.options.display.max_columns = None
 def main():
     complete_df = read_inputs()
     eu_score_df = create_scoring_column(complete_df)
-    write_csvs(eu_score_df)
+    strict_decimal_matrix_df, strict_decimal_ascending_df, r_format_strict_df = produce_matrix(eu_score_df,
+                                                                                               selection='Cs',
+                                                                                               scoring_column='Decimal Scoring')
+    strict_ordinal_matrix_df, strict_ordinal_ascending_df, r_format_strict_df = produce_matrix(eu_score_df,
+                                                                                               selection='Cs',
+                                                                                               scoring_column='Ordinal Scoring')
+    write_csvs(eu_score_df, strict_decimal_matrix_df,
+               strict_decimal_ascending_df, strict_ordinal_matrix_df, strict_ordinal_ascending_df)
 
+##### L1
 def create_scoring_column(complete_df):
-    scoring_df = add_column(complete_df)
-    scoring_df = add_16S_values(scoring_df)
+    scoring_df = add_ordinal_column(complete_df)
+    write_csv(scoring_df, 'test1.csv')
     scoring_df = score_sequences_ordinal(scoring_df)
-    scoring_df = add_scoring_columns(scoring_df)
-    scoring_df = rescore_decimal_scoring_column(scoring_df)
-    scoring_df = rescore_reverse_scoring_column(scoring_df)
-    scoring_df = remove_nan_values(scoring_df)
+    write_csv(scoring_df, 'test2.csv')
+    scoring_df = add_decimal_scoring_column(scoring_df)
+    scoring_df = replace_nan_values(scoring_df)
     return scoring_df
 
-def add_column(complete_df):
-    complete_df.insert(complete_df.columns.get_loc('N')+1, 'Ordinal Scoring', [np.nan]+['x']*(len(complete_df)-1))
-    return complete_df
-
-def add_16S_values(scoring_df):
-    scoring_df["Ordinal Scoring"] = np.where(scoring_df["Selected"] == "16S", '/', scoring_df["Ordinal Scoring"])
-    return scoring_df
+### L2
+def add_ordinal_column(df):
+    # add ordinal column directly after N
+    df.insert(df.columns.get_loc('N')+1, 'Ordinal Scoring', [np.nan]+['x']*(len(df)-1))
+    # Add '/' value for reference row
+    df["Ordinal Scoring"] = np.where(df["Selected"] == "DB", '/', df["Ordinal Scoring"])
+    return df
 
 def score_sequences_ordinal(scoring_df):
-    groups = scoring_df.groupby('DB/Query #')
+    groups = scoring_df.groupby('DB/Query #')   # Group dataframe by "DB/Query #"
     scoring_cols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N']
-    for name, group in groups:
+    for name, group in groups:      # Iterate through each group
+        # Get the reference row for each group (the row with "Selected" value as "DB")
         ref_row = group.loc[group['Selected'] == 'DB']
         ref_values = ref_row[scoring_cols].values[0]
+        # Iterate through each row in the group
         for i, row in group.iterrows():
+            # Skip the reference row
             if row['Selected'] != 'DB':
+                # Keep track of the number of columns that agree with the reference values
+                num_agreed = 0
+                # Iterate through each scoring column
                 for j, col in enumerate(scoring_cols):
-                    if row[col] != ref_values[j]:
-                        scoring_df.at[i, 'Ordinal Scoring'] = str(j+1)
+                    # Check if the value in the current column is equal to the reference value
+                    if row[col] == ref_values[j]:
+                        num_agreed += 1
+                    else:
+                        # Assign the ordinal score
+                        scoring_df.at[i, 'Ordinal Scoring'] = str(15 - num_agreed)
+                        # Exit the loop if a difference is found
                         break
+                # If no differences are found, assign the minimum ordinal score
                 else:
-                    scoring_df.at[i, 'Ordinal Scoring'] = '15'
+                    scoring_df.at[i, 'Ordinal Scoring'] = '1'
+    # Convert the 'Ordinal Scoring' column to numeric
+    scoring_df['Ordinal Scoring'] = pd.to_numeric(scoring_df['Ordinal Scoring'], errors='coerce')
+    # Replace nan values in 'Ordinal Scoring' column with '/' for rows with 'DB' value in 'Selected' column
+    scoring_df.loc[(scoring_df['Selected'] == 'DB') & (scoring_df['Ordinal Scoring'].isnull()), 'Ordinal Scoring'] = '/'
+    # Return the updated dataframe
     return scoring_df
 
-def add_scoring_columns(scoring_df):
-    scoring_df.insert(loc=scoring_df.columns.get_loc("Ordinal Scoring"), column="Decimal Scoring", value=scoring_df['Ordinal Scoring'])
-    scoring_df.insert(loc=scoring_df.columns.get_loc("Ordinal Scoring"), column="Reverse Scoring", value=scoring_df['Ordinal Scoring'])
-    return scoring_df
-
-def rescore_decimal_scoring_column(scoring_df):
-    ordinal_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-    decimal_list = [1, 0.4, 0.3, 0.2, 0.15, 0.1, 0.05, 0.02, 0.01, 0.005, 0.004, 0.003, 0.002, 0.001, 0]
+### L2
+def add_decimal_scoring_column(scoring_df):
+    # create new column as copy of ordinal
+    scoring_df.insert(loc=scoring_df.columns.get_loc("Ordinal Scoring"), column="Decimal Scoring",
+                      value=scoring_df['Ordinal Scoring'])
+    reverse_ordinal_list = [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+    decimal_list = [0.6, 0.4, 0.3, 0.2, 0.15, 0.1, 0.05, 0.02, 0.01, 0.005, 0.004, 0.003, 0.002, 0.001, 0]
+    # switch the above lists for new decimal scoring
     scoring_df['Decimal Scoring'] = pd.to_numeric(scoring_df['Decimal Scoring'], errors='coerce')
-    scoring_df['Decimal Scoring'].replace(ordinal_list, decimal_list, inplace=True)
+    scoring_df['Decimal Scoring'].replace(reverse_ordinal_list, decimal_list, inplace=True)
     scoring_df.loc[scoring_df['DB/Query #'].notna(), 'Decimal Scoring'] = scoring_df['Decimal Scoring'].fillna(
         value='/')
     return scoring_df
 
-def rescore_reverse_scoring_column(scoring_df):
-    ordinal_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-    reverse_list = [0, 600, 700, 800, 850, 900, 950, 980, 990, 995, 996, 997, 998, 999, 1000]
-    scoring_df['Reverse Scoring'] = pd.to_numeric(scoring_df['Reverse Scoring'], errors='coerce')
-    scoring_df['Reverse Scoring'].replace(ordinal_list, reverse_list, inplace=True)
-    scoring_df.loc[scoring_df['DB/Query #'].notna(), 'Reverse Scoring'] = scoring_df['Reverse Scoring'].fillna(
-        value='/')
-    return scoring_df
-
-
+### L2
 # This function removes any nan values that have appeared due to the failure of the 'N/A' values being read in properly
 # If I do read them in, the score_sequences_ordinal is currently breaking, so using this as a workaround
-def remove_nan_values(scoring_df):
+def replace_nan_values(scoring_df):
     scoring_df.loc[scoring_df['DB/Query #'].notna(), 'Similarity (%)'] = scoring_df['Similarity (%)'].fillna(
         value='N/A')
     scoring_df.loc[scoring_df['DB/Query #'].notna(), 'Vs DB#'] = scoring_df['Vs DB#'].fillna(
@@ -79,13 +94,56 @@ def remove_nan_values(scoring_df):
         value='N/A')
     return scoring_df
 
+##### L1
+def produce_matrix(df, selection, scoring_column):
+    # keep only selected columns
+    reduced_df = df.loc[:, ['DB/Query #', 'Tree #', 'Region', 'Selected', scoring_column]]
+    # keep only rows matching certain values
+    matrix_selection = ['Y', selection]
+    reduced_df = reduced_df[reduced_df['Selected'].isin(matrix_selection)]
+    # produce trimmed regional dfs
+    regional_columns = ['DB/Query #', 'Tree #', scoring_column]
+    full_df = reduced_df[(reduced_df['Region'] == 'Full')]
+    full_df = full_df.loc[:, regional_columns]
+    full_df.rename(columns={scoring_column: 'Full'}, inplace=True)
+    v1v3_df = reduced_df[(reduced_df['Region'] == 'V1V3')]
+    v1v3_df = v1v3_df.loc[:, regional_columns]
+    v1v3_df.rename(columns={scoring_column: 'V1V3', 'DB/Query #': 'DB/Q'}, inplace=True)
+    v3v4_df = reduced_df[(reduced_df['Region'] == 'V3V4')]
+    v3v4_df = v3v4_df.loc[:, regional_columns]
+    v3v4_df.rename(columns={scoring_column: 'V3V4', 'DB/Query #': 'DB/Q'}, inplace=True)
+    v4_df = reduced_df[(reduced_df['Region'] == 'V4')]
+    v4_df = v4_df.loc[:, regional_columns]
+    v4_df.rename(columns={scoring_column: 'V4', 'DB/Query #': 'DB/Q'}, inplace=True)
+    # merge the regional dfs, and drop duplicated columns
+    matrix_df = full_df.merge(v1v3_df, on='Tree #')
+    matrix_df = matrix_df.merge(v3v4_df, on='Tree #')
+    matrix_df = matrix_df.merge(v4_df, on='Tree #')
+    matrix_df = matrix_df.loc[:, ['DB/Query #', 'Tree #', 'Full', 'V1V3', 'V3V4', 'V4']]
+    # create df of ascending  values for each region
+    full_df = full_df.loc[:, 'Full'].sort_values(ascending=True).reset_index(drop=True)
+    v1v3_df = v1v3_df.loc[:, 'V1V3'].sort_values(ascending=True).reset_index(drop=True)
+    v3v4_df = v3v4_df.loc[:, 'V3V4'].sort_values(ascending=True).reset_index(drop=True)
+    v4_df = v4_df.loc[:, 'V4'].sort_values(ascending=True).reset_index(drop=True)
+    ascending_df = pd.concat([full_df, v1v3_df, v3v4_df, v4_df], axis=1)
+    # name dfs, for writing to .csv files
+    matrix_df.name = selection + '_' + scoring_column.strip(' Scoring') + '_Matrix.csv'
+    ascending_df.name = selection + '_' + scoring_column.strip(' Scoring') + '_Ascending.csv'
+
+    return matrix_df, ascending_df, reduced_df
+
+##### L1
 def read_inputs():
     complete_df = read_csv('collected_barcodes.csv')
-    # complete_df = pd.read_csv('collected_barcodes.csv', na_filter=False)
     return complete_df
 
-def write_csvs(eu_score_df):
+def write_csvs(eu_score_df, strict_decimal_matrix_df,
+               strict_decimal_ascending_df, strict_ordinal_matrix_df, strict_ordinal_ascending_df):
     write_csv(eu_score_df,'euclidean_scoring.csv')
+    write_csv(strict_decimal_matrix_df, strict_decimal_matrix_df.name)
+    write_csv(strict_decimal_ascending_df, strict_decimal_ascending_df.name)
+    write_csv(strict_ordinal_matrix_df, strict_ordinal_matrix_df.name)
+    write_csv(strict_ordinal_ascending_df, strict_ordinal_ascending_df.name)
 
 ## helper functions
 def read_csv(filename):
