@@ -34,22 +34,21 @@ def plot_region(df, x, y, color, subplot_index, title, xlabel, ylabel, xlim, yli
         else:
             plt.plot(df[x], p(df[x]), linewidth=linewidth, dashes=dashes)
 
-def plot_trendlines(data_df):
+def plot_trendlines(df):
     plt.subplot(2, 2, 4)
-    z = np.polyfit(data_df['Full'], data_df['V1V3'], 1)
-    p = np.poly1d(z)
-    plt.plot(data_df['Full'], p(data_df['Full']), "b--", linewidth=0.8, dashes=[1, 5])
-    z = np.polyfit(data_df['Full'], data_df['V3V4'], 1)
-    p = np.poly1d(z)
-    plt.plot(data_df['Full'], p(data_df['Full']), 'g--', linewidth=0.8, dashes=[1, 5])
-    z = np.polyfit(data_df['Full'], data_df['V4'], 1)
-    p = np.poly1d(z)
-    plt.plot(data_df['Full'], p(data_df['Full']), 'r--', linewidth=0.8, dashes=[1, 5])
+    plot_trendline(df['Full'], df['V1V3'], "b")
+    plot_trendline(df['Full'], df['V3V4'], "g")
+    plot_trendline(df['Full'], df['V4'], "r")
     plt.xlim(0, 0.31)
     plt.ylim(0, 0.31)
     plt.xlabel('Full 16S Mapped Scores', color='orange')
     plt.ylabel('Regional Mapped Scores', color='black', fontweight='bold')
     plt.title('Regional Trendlines for Mapped Scores')
+
+def plot_trendline(x, y, color):
+    z = np.polyfit(x, y, 1)
+    p = np.poly1d(z)
+    plt.plot(x, p(x), color + '--', linewidth=0.8, dashes=[1, 5])
 
 ## helper functions
 def read_csv(filename):
