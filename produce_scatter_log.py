@@ -42,6 +42,17 @@ def plot_region(df, x, y, color, subplot_index, title, xlabel, ylabel, xlim, yli
     x_fit = np.linspace(x_log.min(), x_log.max(), 50)
     y_fit = 10 ** p(x_fit)
     plt.plot(10 ** x_fit, y_fit, plot_color, linewidth=0.8, dashes=[2, 5])
+    add_clade_lines(0.05, xlim, ylim, ls='dotted', linewidth=1, color='black', label='species')
+    add_clade_lines(0.20, xlim, ylim, ls='dotted', linewidth=1, color='black', label='genus')
+
+def add_clade_lines(pos, xlim, ylim, ls, linewidth, color, label):
+    plt.plot([pos, pos], [ylim[0], pos], ls=ls, linewidth=linewidth, color=color)
+    plt.plot([xlim[0], pos], [pos, pos], ls=ls, linewidth=linewidth, color=color)
+    plt.text(pos, pos/10, label, ha='center', va='bottom', fontsize=8, color=color)
+
+    # I don't need the points plotted as below, but leaving code as I might want to plot some slightly different things
+    # plt.plot([pos], [pos], marker='o', markersize=4, color='black')
+
 
 def plot_trendlines(df, xlim, ylim):
     plt.subplot(2, 2, 4)
