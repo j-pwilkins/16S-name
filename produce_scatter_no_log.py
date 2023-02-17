@@ -33,6 +33,13 @@ def plot_region(df, x, y, color, subplot_index, title, xlabel, ylabel, xlim, yli
             plt.plot(df[x], p(df[x]), plot_color, linewidth=linewidth, dashes=dashes)
         else:
             plt.plot(df[x], p(df[x]), linewidth=linewidth, dashes=dashes)
+        add_clade_lines(0.05, xlim, ylim, ls='dotted', linewidth=1, color='black', label=' species')
+        add_clade_lines(0.20, xlim, ylim, ls='dotted', linewidth=1, color='black', label=' genus')
+
+def add_clade_lines(pos, xlim, ylim, ls, linewidth, color, label):
+    plt.plot([pos, pos], [ylim[0], pos], ls=ls, linewidth=linewidth, color=color)
+    plt.plot([xlim[0], pos], [pos, pos], ls=ls, linewidth=linewidth, color=color)
+    plt.text(pos, pos/10, label, ha='left', va='bottom', fontsize=8, color=color)
 
 def plot_trendlines(df):
     plt.subplot(2, 2, 4)
