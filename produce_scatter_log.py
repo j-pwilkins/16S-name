@@ -48,7 +48,7 @@ def plot_region(df, x, y, color, subplot_index, title, xlabel, ylabel, xlim, yli
 def add_clade_lines(pos, xlim, ylim, ls, linewidth, color, label):
     plt.plot([pos, pos], [ylim[0], pos], ls=ls, linewidth=linewidth, color=color)
     plt.plot([xlim[0], pos], [pos, pos], ls=ls, linewidth=linewidth, color=color)
-    plt.text(pos, pos/10, label, ha='center', va='bottom', fontsize=8, color=color)
+    plt.text(pos, pos/10, label, ha='right', va='bottom', fontsize=8, color=color)
 
     # I don't need the points plotted as below, but leaving code as I might want to plot some slightly different things
     # plt.plot([pos], [pos], marker='o', markersize=4, color='black')
