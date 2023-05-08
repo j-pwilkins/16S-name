@@ -187,7 +187,7 @@ def merge_detail_from_input(vsearch_df, input_df):
     input_detail_df = input_detail_df.rename(columns={'Entry Order': 'DB#', 'Sim to Target': 'Similarity(%)'})
     selected_columns = ['DB#', 'Hun#', 'Fas#', 'DB Accession Number', 'DB Name', 'Similarity(%)',
                         'Alternative Matches', 'Vs DB#', 'Vs Name', 'Vs ID', 'DB Found', 'Date Accessed',
-                        '16S rRNA sequence']
+                        'Length', '16S rRNA sequence']
     return input_detail_df[selected_columns]
 
 
@@ -412,7 +412,7 @@ def merge_vsearch_with_barcode(processed_vsearch_df, barcode_df):
     merged_df = pd.merge(processed_vsearch_df, barcode_df, on='DB#', how='left')
     cols = ['DB#', 'Hun#', 'Fas#', 'DB Accession Number', 'DB Name', 'Alternative Matches', 'Similarity(%)', 'A', 'B',
             'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'Vs DB#', 'Vs Name', 'Vs ID', 'DB Found',
-            'Date Accessed', '16S rRNA sequence']
+            'Date Accessed', 'Length', '16S rRNA sequence']
     return merged_df[cols]
 
 
