@@ -24,8 +24,8 @@ def main():
 
 ##### L1
 def set_variables():
-    # input_sequences_list = sys.argv[1]
-    input_sequences_list = 'Test10.csv'         # temp line
+    input_sequences_list = sys.argv[1]
+    # input_sequences_list = 'Test10.csv'         # temp line
     vsearch_output = 'vsearch_output.csv'
     curated_vsearch_output = 'All_vs_All.csv'
     default_output_directory = input_sequences_list.rstrip('.csv')
@@ -61,7 +61,7 @@ def organise_directories(output_directory, input_sequences_list, output_file, vs
         print(f'The previous {output_directory} folder has been deleted')
     os.makedirs(output_directory, exist_ok=True)
     shutil.copy(input_sequences_list, output_directory)
-    shutil.copy(vsearch_output, output_directory)           # temp line
+    # shutil.copy(vsearch_output, output_directory)           # temp line
     os.chdir(output_directory)
     input_df, number_of_sequences_entered = import_info(input_sequences_list)
     check_input(input_df)
@@ -97,7 +97,7 @@ def prepare_and_run_vsearch(input_df, input_filename, number_of_sequences_entere
     fastaname = input_filename + '.fa'
     for i in range(number_of_sequences_entered):
         convert_input_to_fasta(i, fastaname, input_df)
-    # run_vsearch(fastaname)
+    run_vsearch(fastaname)
     return fastaname
 
 
@@ -112,7 +112,7 @@ def convert_input_to_fasta(i, fastaname, input_df):
 
 ### L2
 def run_vsearch(fastaname):
-    cmd = 'vsearch --allpairs_global ' + fastaname + ' --blast6out vsearch_output.csv --acceptall'
+    cmd = 'vsearch --allpairs_global ' + fastaname + ' --blast6out vsearch_output.csv --acceptall --maxaccepts 0 --maxrejects 0 --threads 40'
     os.system(cmd)
     if "cmd" not in locals():
         print('A pre-prepared vsearch output has been used here')
@@ -448,7 +448,6 @@ def merge_vsearch_with_barcode(processed_vsearch_df, barcode_df):
     cols = ['DB #', 'Hun#', 'Fas#', 'DB Accession Number', 'DB Name', 'Alternative Matches', 'Similarity (%)', 'NT Diff Raw', 'Cat Changed', 'A', 'B',
             'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'Vs DB #', 'Vs Name', 'Vs ID', 'DB Found',
             'Date Accessed', 'Length', '16S rRNA sequence']
-    write_csv(merged_df, 'mergetest.csv')
     return merged_df[cols]
 
 
@@ -467,7 +466,6 @@ def add_distance_score_column(barcoded_df, input_sequences_list, category_thresh
     barcoded_df = below_column(barcoded_df, barcode_columns)
     barcoded_df = nearest_score(barcoded_df)
     barcoded_df = combine_scoring_columns(barcoded_df, input_sequences_list, category_thresholds, barcode_columns)
-    write_csv(barcoded_df,'distance.csv')
     barcoded_df = add_nt_difference_columns(barcoded_df)
     return barcoded_df
 
@@ -536,7 +534,6 @@ def combine_scoring_columns(barcoded_df, input_sequences_list, category_threshol
     scoring_list = [round(((100 - value)/100), 5) for value in category_thresholds.values()]
     scoring_list.insert(0, 0.005)
     barcoded_df.insert(barcoded_df.columns.get_loc('N') + 1, 'Distance Score', barcoded_df['Nearest Score'].replace(reverse_ordinal_list, scoring_list))
-    write_csv(barcoded_df, 'errortest.csv')
     # Calculate how many entries are duplicates
     duplicated_entries = (barcoded_df['Similarity (%)'] == 100).sum()
     unique_entries = len(barcoded_df) - duplicated_entries
@@ -613,7 +610,6 @@ def create_category_aggregate_bar_chart(barcoded_df, input_sequences_list, barco
 
 ## L3
 def add_nt_difference_columns(barcoded_df):
-    write_csv(barcoded_df, 'btest1.csv')
     # convert column to show nucleotide distance from comparison sequence (i.e. nearest below in db)
     barcoded_df['Diff to Comparison (NT)'] = ((barcoded_df['NT Diff Raw'] / 100) * barcoded_df['Length']).round(0)
     # add new column that shows nucleotide distance from nearest db sequence (i.e. above/below in tree #)
@@ -624,7 +620,6 @@ def add_nt_difference_columns(barcoded_df):
             'Nearest Score', 'Diff to Comparison (NT)', 'Diff to Nearest (NT)', 'Vs DB #', 'Vs Name', 'Vs ID',
             'DB Found', 'Date Accessed', 'Length', '16S rRNA sequence']
     barcoded_df = barcoded_df[cols]
-    write_csv(barcoded_df, 'btest2.csv')
     return barcoded_df
 
 
