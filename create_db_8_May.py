@@ -120,18 +120,20 @@ def run_vsearch(fastaname):
 
 ##### L1
 def process_vsearch_output(vsearch_output, curated_vsearch_output, input_df):
+    # Function to parse vsearch output into format I want
     AvA_df = parse_vsearch_allpairsglobal_blast6(vsearch_output)
-    # write_csv(AvA_df, 'AvA.csv')      # temp line to test 'Alternate Matches'
-    # AvA_df = read_csv('AvA.csv')        # temp line to test 'Alternate Matches'
-    # function that trims the vvsearch df to leave only eligible highest similarity matches for each inputted sequence
+    # Function to create a Max Similarity column - will later allow measure of biological distance
+    AvA_df = find_max_similarity(AvA_df)
+    # function that trims the vsearch df to leave only eligible highest similarity matches for each inputted sequence
     # Where multiple matches exist all alternates moved to separate df. Lowest alternate input only chosen by default
     similarity_df, alternative_matches_df = retain_only_highest_similarities(AvA_df)
     # Detail from input .csv file integrated with vsearch output, ready for program output
     similarity_df = merge_detail_from_input(similarity_df, input_df)
     alternative_matches_df = merge_detail_from_input(alternative_matches_df, input_df)
     # fill in nan values for first DB # which has no comparison sequence as it is first
-    similarity_df.loc[0, ['Similarity (%)', 'Alternative Matches', 'Vs DB #', 'Vs Name', 'Vs ID']] = similarity_df.loc[
-        0, ['Similarity (%)', 'Alternative Matches', 'Vs DB #', 'Vs Name', 'Vs ID']].fillna('N/A')
+    similarity_df.loc[0, ['Similarity (%)', 'Max Similarity', 'Alternative Matches', 'Vs DB #', 'Vs Name', 'Vs ID']] = \
+    similarity_df.loc[
+        0, ['Similarity (%)', 'Max Similarity', 'Alternative Matches', 'Vs DB #', 'Vs Name', 'Vs ID']].fillna('N/A')
     # This line is necessary because merge_detail produces entries for every sequence in the input -
     # could maybe be removed at some stage if merge_detail is fixed, though I think there is a benefit for similarity_df
     # Line keeps only those sequences with alternate matches
@@ -141,7 +143,6 @@ def process_vsearch_output(vsearch_output, curated_vsearch_output, input_df):
     print(
         f'{len(similarity_df)} sequences were processed. {len(alternative_matches)} sequences had alternative matches.')
     return similarity_df, alternative_matches_df, AvA_df
-
 
 ### L2
 def parse_vsearch_allpairsglobal_blast6(vsearch_output):
@@ -156,6 +157,13 @@ def parse_vsearch_allpairsglobal_blast6(vsearch_output):
     all_vs_all_df = all_vs_all_df.sort_values(['Q', 'T'])
     return all_vs_all_df
 
+### L2
+def find_max_similarity(df):
+    # Work on each Query at a time
+    grouped = df.groupby('Query Seq')
+    # create new column that finds the highest similarity for each group
+    df['Max Similarity'] = grouped['Sim to Target'].transform(max)
+    return df
 
 ### L2
 def retain_only_highest_similarities(curated_df):
@@ -181,14 +189,14 @@ def retain_only_highest_similarities(curated_df):
 
 ### L2
 def merge_detail_from_input(vsearch_df, input_df):
-    vsearch_detail_df = vsearch_df[['Q', 'Sim to Target', 'Alternative Matches', 'T']]
+    vsearch_detail_df = vsearch_df[['Q', 'Sim to Target', 'Max Similarity', 'Alternative Matches', 'T']]
     input_detail_df = pd.merge(input_df, vsearch_detail_df, left_on='Entry Order', right_on='Q', how='left')
     versus_df = input_df[['Entry Order', 'DB Name', 'DB Accession Number']]
     versus_df = versus_df.rename(
         columns={'Entry Order': 'Vs DB #', 'DB Name': 'Vs Name', 'DB Accession Number': 'Vs ID', 'T': 'Vs DB #'})
     input_detail_df = pd.merge(input_detail_df, versus_df, left_on='T', right_on='Vs DB #', how='left')
     input_detail_df = input_detail_df.rename(columns={'Entry Order': 'DB #', 'Sim to Target': 'Similarity (%)'})
-    selected_columns = ['DB #', 'Hun#', 'Fas#', 'DB Accession Number', 'DB Name', 'Similarity (%)',
+    selected_columns = ['DB #', 'Hun#', 'Fas#', 'DB Accession Number', 'DB Name', 'Similarity (%)', 'Max Similarity',
                         'Alternative Matches', 'Vs DB #', 'Vs Name', 'Vs ID', 'DB Found', 'Date Accessed',
                         'Length', '16S rRNA sequence']
     return input_detail_df[selected_columns]
@@ -445,9 +453,9 @@ def check_barcode_df(processed_vsearch_df, barcode_df):
 def merge_vsearch_with_barcode(processed_vsearch_df, barcode_df):
     barcode_df = barcode_df.drop(columns=['Similarity (%)', 'Vs'])
     merged_df = pd.merge(processed_vsearch_df, barcode_df, on='DB #', how='left')
-    cols = ['DB #', 'Hun#', 'Fas#', 'DB Accession Number', 'DB Name', 'Alternative Matches', 'Similarity (%)', 'NT Diff Raw', 'Cat Changed', 'A', 'B',
-            'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'Vs DB #', 'Vs Name', 'Vs ID', 'DB Found',
-            'Date Accessed', 'Length', '16S rRNA sequence']
+    cols = ['DB #', 'Hun#', 'Fas#', 'DB Accession Number', 'DB Name', 'Alternative Matches', 'Similarity (%)',
+            'Max Similarity', 'NT Diff Raw', 'Cat Changed', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
+            'M', 'N', 'Vs DB #', 'Vs Name', 'Vs ID', 'DB Found', 'Date Accessed', 'Length', '16S rRNA sequence']
     return merged_df[cols]
 
 
@@ -466,6 +474,7 @@ def add_distance_score_column(barcoded_df, input_sequences_list, category_thresh
     barcoded_df = below_column(barcoded_df, barcode_columns)
     barcoded_df = nearest_score(barcoded_df)
     barcoded_df = combine_scoring_columns(barcoded_df, input_sequences_list, category_thresholds, barcode_columns)
+    barcoded_df = add_biological_distance_column(barcoded_df)
     barcoded_df = add_nt_difference_columns(barcoded_df)
     return barcoded_df
 
@@ -545,6 +554,26 @@ def combine_scoring_columns(barcoded_df, input_sequences_list, category_threshol
     create_category_aggregate_bar_chart(barcoded_df, input_sequences_list, barcode_columns)
     return barcoded_df
 
+### L3
+def add_biological_distance_column(barcoded_df):
+    write_csv(barcoded_df, 'working.csv')
+    # Replace 'N/A' values in 'Max Similarity' column with 0
+    barcoded_df['Max Similarity'] = barcoded_df['Max Similarity'].replace('N/A', 0)
+
+    # Calculate Biological Distance Score
+    barcoded_df['Biological Distance Score'] = 1 - (barcoded_df['Max Similarity'] / 100)
+
+    # Set Biological Distance Score to 0 if Max Similarity is 0
+    barcoded_df.loc[barcoded_df['Max Similarity'] == 0, 'Biological Distance Score'] = 0
+
+    # Replace 0 values in Max Similarity column with 'N/A' and check for too many 0 values
+    num_zeros = (barcoded_df['Max Similarity'] == 0).sum()
+    if num_zeros > 1:
+        print("There are too many 0 values in the 'Max Similarity' column")
+    barcoded_df['Max Similarity'] = barcoded_df['Max Similarity'].replace(0, 'N/A')
+
+    return barcoded_df
+
 ### L4
 def create_similarity_bar_chart(barcoded_df, input_sequences_list, scoring_list):
     # Filter out rows with Similarity (%) = 100
@@ -616,9 +645,10 @@ def add_nt_difference_columns(barcoded_df):
     barcoded_df['Diff to Nearest (NT)'] = (barcoded_df['Distance Score'] * barcoded_df['Length']).round(0)
     # # reorder df to account for new cols
     cols = ['DB #', 'Hun#', 'Fas#', 'Tree#', 'DB Accession Number', 'DB Name', 'Alternative Matches', 'Similarity (%)',
-            'Cat Changed', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'Distance Score',
-            'Nearest Score', 'Diff to Comparison (NT)', 'Diff to Nearest (NT)', 'Vs DB #', 'Vs Name', 'Vs ID',
-            'DB Found', 'Date Accessed', 'Length', '16S rRNA sequence']
+            'Max Similarity', 'Cat Changed', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N',
+            'Distance Score', 'Biological Distance Score', 'Nearest Score', 'Diff to Comparison (NT)',
+            'Diff to Nearest (NT)', 'Vs DB #', 'Vs Name', 'Vs ID', 'DB Found', 'Date Accessed', 'Length',
+            '16S rRNA sequence']
     barcoded_df = barcoded_df[cols]
     return barcoded_df
 
